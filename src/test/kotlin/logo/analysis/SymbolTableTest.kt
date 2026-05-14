@@ -1,5 +1,6 @@
 package logo.analysis
 
+import logo.diagnostics.DiagnosticSeverity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -27,5 +28,36 @@ class SymbolTableTest {
     fun `unbound variable reference is not recorded`() {
         val result = analyse("to square :size fd :foo end")
         assertTrue(result.symbolTable.varReferences.isEmpty())
+    }
+
+    @Test
+    fun `unbound variable in body emits warning diagnostic`() {
+        // line 0: to square :size fd :foo end
+        //          0  3      10    16 19    25
+        val result = analyse("to square :size fd :foo end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(0, d.line)
+        assertEquals(19, d.char)
+        assertEquals(4, d.length) // ":foo"
+        assertTrue("foo" in d.message)
+    }
+
+    @Test
+    fun `bound variable produces no diagnostic`() {
+        val result = analyse("to square :size fd :size end")
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `top-level variable reference is flagged as unbound`() {
+        // line 0: print :foo
+        //          0     6
+        val result = analyse("print :foo")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(0, d.line)
+        assertEquals(6, d.char)
+        assertEquals(4, d.length)
     }
 }

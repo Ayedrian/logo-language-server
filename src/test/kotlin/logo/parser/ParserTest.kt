@@ -78,5 +78,8 @@ class ParserTest {
         assertEquals(1, program.statements.size)
         assertIs<ProcedureDefNode>(program.statements[0])
         assertEquals(1, parser.diagnostics.size)
+        // Diagnostic should span the name token "square" so the editor highlights something meaningful
+        val d = parser.diagnostics.single()
+        assertEquals("square".length, d.length)
     }
 }
