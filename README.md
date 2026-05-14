@@ -27,6 +27,12 @@ Produce a runnable launch script (speaks LSP over stdio):
 
 The script lands at `build/install/logo-language-server/bin/logo-language-server`.
 
+## Running tests
+
+```bash
+./gradlew test
+```
+
 ## Trying it in IntelliJ (via LSP4IJ)
 
 1. Install the **LSP4IJ** plugin from the Marketplace and restart the IDE.
@@ -38,6 +44,26 @@ The script lands at `build/install/logo-language-server/bin/logo-language-server
 4. Open any `.logo` file. The server boots on first open.
 
 If you make changes to the code: Rebuild with `./gradlew installDist` and right-click the server entry → **Restart**.
+
+## Architecture
+
+The server is a six-layer pipeline under `src/main/kotlin/logo/`:
+
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| 1. Lexer | `lexer/` | Source → tokens, position-preserving and case-insensitive |
+| 2. Parser | `parser/` | Tokens → AST. Two-pass: a cheap first pass builds the procedure arity table; the second is a recursive-descent parser with statement-level error recovery |
+| 3. Symbol table | `analysis/SymbolTable.kt` | Walks the AST, resolves variable refs to bindings (params, `make` / `local` / `localmake`, `for` counters) |
+| 4. Pipeline | `analysis/Pipeline.kt` | Wires layers 1-3 into a single `analyse(source)` call; re-runs from scratch on every `didChange` (no incremental parsing) |
+| 5. Features | `features/` | LSP-facing handlers: `SemanticTokens.kt`, `Declaration.kt`, `Hover.kt` |
+| 6. Server | `server/` | LSP4J wiring: `Main.kt` bootstraps stdio, `LogoLanguageServer.kt` registers capabilities and dispatches requests |
+
+Diagnostics from all pipeline layers flow through `diagnostics/Diagnostic.kt` and are pushed via `textDocument/publishDiagnostics`.
+
+Two decisions worth flagging:
+
+- **Two-pass parser** — LOGO's grammar is context-sensitive: a call's argument count depends on the callee's arity. The first pass builds an arity table so the second pass knows where each expression ends.
+- **Error recovery, not error throwing** — the parser never aborts on bad input. It records a diagnostic and skips to the next statement boundary, so the rest of the document still produces semantic tokens and definitions.
 
 ## Scope and Limitations
 
