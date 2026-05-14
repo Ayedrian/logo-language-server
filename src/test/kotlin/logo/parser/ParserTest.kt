@@ -58,6 +58,18 @@ class ParserTest {
     }
 
     @Test
+    fun `variable reference in body parses to VariableRefNode`() {
+        val program = parse("to square :size fd :size end")
+        val def = assertIs<ProcedureDefNode>(program.statements[0])
+        assertEquals(1, def.body.size)
+        val cmd = assertIs<CommandNode>(def.body[0])
+        assertEquals("fd", cmd.nameToken.text)
+        assertEquals(1, cmd.args.size)
+        val ref = assertIs<VariableRefNode>(cmd.args[0])
+        assertEquals("size", ref.token.text)
+    }
+
+    @Test
     fun `missing end emits diagnostic and still returns partial def`() {
         val tokens = Lexer("to square :size fd 1").tokenise()
         val scanner = FirstPassScanner(tokens).also { it.scan() }

@@ -38,4 +38,39 @@ class DeclarationTest {
         val target = findDeclaration(result.ast, result.symbolTable, line = 1, char = 8) // past "square "
         assertNull(target)
     }
+
+    @Test
+    fun `go-to-declaration on variable ref jumps to param declaration`() {
+        // line 0: to square :size fd :size end
+        //          0  3      10    16 19    25
+        val source = "to square :size fd :size end"
+        val result = analyse(source)
+
+        // Cursor on the body ":size" at char 20 ("s" of size)
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 20)
+        assertNotNull(target)
+        // Header ":size" spans columns [10, 15)
+        assertEquals(0, target.range.line)
+        assertEquals(10, target.range.startChar)
+        assertEquals(15, target.range.endChar)
+    }
+
+    @Test
+    fun `go-to-declaration on unbound variable returns null`() {
+        val result = analyse("to square :size fd :foo end")
+        // Cursor on the body ":foo" at char 20
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 20)
+        assertNull(target)
+    }
+
+    @Test
+    fun `go-to-declaration on param declaration returns itself`() {
+        val result = analyse("to square :size fd :size end")
+        // Cursor on the header ":size" at char 10 (the colon itself)
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 10)
+        assertNotNull(target)
+        assertEquals(0, target.range.line)
+        assertEquals(10, target.range.startChar)
+        assertEquals(15, target.range.endChar)
+    }
 }

@@ -47,4 +47,20 @@ class SemanticTokensTest {
         val result = analyse("fd 10")
         assertTrue(result.diagnostics.isEmpty())
     }
+
+    @Test
+    fun `both colon-name occurrences get PARAMETER tokens`() {
+        // line 0: to square :size fd :size end
+        //          0  3      10    16 19    25
+        val result = analyse("to square :size fd :size end")
+        val params = collectSemanticTokens(result.ast).filter { it.kind == SemanticTokenKind.PARAMETER }
+
+        assertEquals(2, params.size)
+        assertEquals(0, params[0].line)
+        assertEquals(10, params[0].char)
+        assertEquals(5, params[0].length) // covers ":size"
+        assertEquals(0, params[1].line)
+        assertEquals(19, params[1].char)
+        assertEquals(5, params[1].length)
+    }
 }
