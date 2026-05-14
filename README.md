@@ -9,7 +9,7 @@ Supports:
 - Simple hover documentation for procedures, parameters and variables
 
 Does NOT support (although I would've loved to work on these and might do so in the future):
-- Variable renaming (athough partial support exists via NodeAtCursor walker and in SymbolTable)
+- Variable renaming (although partial support exists via NodeAtCursor walker and in SymbolTable)
 - Simple code completion
 - Many more LSP features of course
 
@@ -42,6 +42,20 @@ The script lands at `build/install/logo-language-server/bin/logo-language-server
    - **Command**: absolute path to `build/install/logo-language-server/bin/logo-language-server`
    - **Mappings** tab: add a row with file name pattern `*.logo` and language id `logo`
 4. Open any `.logo` file. The server boots on first open.
+
+### TextMate grammar
+
+This project has a TextMate grammar at `grammars/logo.tmLanguage.json` that
+provides regex-based coloring (comments, numbers, `:variables`, operators,
+and the ~300 UCBLogo built-in primitives). This is the base layer the
+LSP's semantic tokens build on top of, without it opening a `.logo` file
+before the server boots shows plain text.
+
+To install in IntelliJ:
+1. Go to **Settings → Editor → TextMate Bundles**.
+2. Click `+` and select the repo's `grammars/` directory.
+3. Reopen any `.logo` file — basic highlighting kicks in immediately; the LSP
+   refines it once the server starts.
 
 If you make changes to the code: Rebuild with `./gradlew installDist` and right-click the server entry → **Restart**.
 
