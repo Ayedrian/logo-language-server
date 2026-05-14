@@ -5,6 +5,7 @@ import logo.analysis.analyse
 import logo.features.SemanticTokenKind
 import logo.features.collectSemanticTokens
 import logo.features.encodeSemanticTokens
+import logo.features.findDeclaration
 import org.eclipse.lsp4j.*
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 import org.eclipse.lsp4j.services.*
@@ -42,11 +43,18 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
             return CompletableFuture.completedFuture(SemanticTokens(data))
         }
 
-        override fun definition(
-            params: DefinitionParams,
+        override fun declaration(
+            params: DeclarationParams,
         ): CompletableFuture<Either<MutableList<out Location>, MutableList<out LocationLink>>> {
-            // TODO: implement go-to-declaration (currently stubbed)
-            return CompletableFuture.completedFuture(Either.forLeft(mutableListOf()))
+            val uri = params.textDocument.uri
+            val result = cache[uri]
+            val pos = params.position
+            val target = result?.let { findDeclaration(it.ast, it.symbolTable, pos.line, pos.character) }
+            val locations: MutableList<out Location> = if (target != null) {
+                val r = target.range
+                mutableListOf(Location(uri, Range(Position(r.line, r.startChar), Position(r.line, r.endChar))))
+            } else mutableListOf()
+            return CompletableFuture.completedFuture(Either.forLeft(locations))
         }
     }
 
@@ -65,7 +73,7 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
         )
         val capabilities = ServerCapabilities().apply {
             semanticTokensProvider = SemanticTokensWithRegistrationOptions(legend, SemanticTokensServerFull(false))
-            definitionProvider = Either.forLeft(true)
+            declarationProvider = Either.forLeft(true)
             textDocumentSync = Either.forLeft(TextDocumentSyncKind.Full)
         }
         return CompletableFuture.completedFuture(InitializeResult(capabilities))

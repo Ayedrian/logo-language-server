@@ -4,6 +4,7 @@ import logo.lexer.TokenType
 import logo.parser.AstNode
 import logo.parser.CommandNode
 import logo.parser.NumberNode
+import logo.parser.ProcedureDefNode
 import logo.parser.ProgramNode
 
 /**
@@ -14,6 +15,7 @@ enum class SemanticTokenKind(val index: Int) {
     KEYWORD(0),
     FUNCTION(1),
     NUMBER(2),
+    PARAMETER(3),
 }
 
 data class RawSemanticToken(
@@ -36,6 +38,21 @@ private fun visitStatement(node: AstNode, out: MutableList<RawSemanticToken>) {
             val kind = if (tok.type == TokenType.KEYWORD) SemanticTokenKind.KEYWORD else SemanticTokenKind.FUNCTION
             out += RawSemanticToken(tok.line, tok.char, tok.text.length, kind)
             for (arg in node.args) visitExpression(arg, out)
+        }
+        is ProcedureDefNode -> {
+            val to = node.toToken
+            out += RawSemanticToken(to.line, to.char, to.text.length, SemanticTokenKind.KEYWORD)
+            val name = node.nameToken
+            out += RawSemanticToken(name.line, name.char, name.text.length, SemanticTokenKind.FUNCTION)
+            for (param in node.params) {
+                // The VARIABLE token's text excludes the leading ':' but its char points at the ':',
+                // so highlight covers the full ":name" (length = name + 1).
+                out += RawSemanticToken(param.line, param.char, param.text.length + 1, SemanticTokenKind.PARAMETER)
+            }
+            for (stmt in node.body) visitStatement(stmt, out)
+            node.endToken?.let { end ->
+                out += RawSemanticToken(end.line, end.char, end.text.length, SemanticTokenKind.KEYWORD)
+            }
         }
         else -> Unit
     }

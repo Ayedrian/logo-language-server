@@ -44,4 +44,27 @@ class ParserTest {
         parser.parse()
         assertEquals(0, parser.diagnostics.size)
     }
+
+    @Test
+    fun `parses procedure definition with one param and one body statement`() {
+        val program = parse("to square :size fd 1 end")
+        assertEquals(1, program.statements.size)
+        val def = assertIs<ProcedureDefNode>(program.statements[0])
+        assertEquals("square", def.nameToken.text)
+        assertEquals(1, def.params.size)
+        assertEquals("size", def.params[0].text)
+        assertEquals(1, def.body.size)
+        assertIs<CommandNode>(def.body[0])
+    }
+
+    @Test
+    fun `missing end emits diagnostic and still returns partial def`() {
+        val tokens = Lexer("to square :size fd 1").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        assertEquals(1, program.statements.size)
+        assertIs<ProcedureDefNode>(program.statements[0])
+        assertEquals(1, parser.diagnostics.size)
+    }
 }

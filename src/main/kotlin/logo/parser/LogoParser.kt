@@ -49,7 +49,7 @@ class LogoParser(
         val toToken = consume() // "to"
         if (isAtEnd() || current().type != TokenType.IDENTIFIER) {
             diagnostics += Diagnostic("Expected procedure name after 'to'", toToken.line, toToken.char)
-            return ProcedureDefNode(toToken, emptyList(), emptyList())
+            return ProcedureDefNode(toToken, toToken, emptyList(), emptyList(), null)
         }
         val nameToken = consume()
 
@@ -63,12 +63,13 @@ class LogoParser(
             parseStatement()?.let { body += it }
         }
 
-        if (isAtEnd()) {
+        val endToken = if (isAtEnd()) {
             diagnostics += Diagnostic("Expected 'end' to close procedure '${nameToken.text}'", nameToken.line, nameToken.char)
+            null
         } else {
-            consume() // "end"
+            consume()
         }
-        return ProcedureDefNode(nameToken, params, body)
+        return ProcedureDefNode(toToken, nameToken, params, body, endToken)
     }
 
     /**

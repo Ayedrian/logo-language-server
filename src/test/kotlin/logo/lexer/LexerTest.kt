@@ -51,6 +51,14 @@ class LexerTest {
     }
 
     @Test
+    fun `colon name produces VARIABLE token without leading colon`() {
+        val tokens = Lexer(":size").tokenise()
+        assertEquals(TokenType.VARIABLE, tokens[0].type)
+        assertEquals("size", tokens[0].text)
+        assertEquals(0, tokens[0].char)
+    }
+
+    @Test
     fun `multiline input tracks line and column`() {
         val tokens = Lexer("print 1\nprint 2").tokenise()
         assertEquals(0, tokens[0].line) // first print
