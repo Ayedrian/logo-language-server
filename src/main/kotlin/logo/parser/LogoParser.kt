@@ -1,10 +1,8 @@
 package logo.parser
 
+import logo.diagnostics.Diagnostic
 import logo.lexer.Token
 import logo.lexer.TokenType
-
-// A reported problem in the source code we can display
-data class Diagnostic(val message: String, val line: Int, val char: Int)
 
 class LogoParser(
     private val tokens: List<Token>,
@@ -48,7 +46,7 @@ class LogoParser(
     private fun parseProcedureDef(): ProcedureDefNode {
         val toToken = consume() // "to"
         if (isAtEnd() || current().type != TokenType.IDENTIFIER) {
-            diagnostics += Diagnostic("Expected procedure name after 'to'", toToken.line, toToken.char)
+            diagnostics += Diagnostic("Expected procedure name after 'to'", toToken.line, toToken.char, toToken.text.length)
             return ProcedureDefNode(toToken, toToken, emptyList(), emptyList(), null)
         }
         val nameToken = consume()
@@ -64,7 +62,7 @@ class LogoParser(
         }
 
         val endToken = if (isAtEnd()) {
-            diagnostics += Diagnostic("Expected 'end' to close procedure '${nameToken.text}'", nameToken.line, nameToken.char)
+            diagnostics += Diagnostic("Expected 'end' to close procedure '${nameToken.text}'", nameToken.line, nameToken.char, nameToken.text.length)
             null
         } else {
             consume()
@@ -101,7 +99,9 @@ class LogoParser(
                 VariableRefNode(tok)
             }
             else -> {
-                diagnostics += Diagnostic("Expected expression", tok.line, tok.char)
+                // EOF has empty text; use length 1 so the LSP range is well-formed
+                val len = if (tok.text.isEmpty()) 1 else tok.text.length
+                diagnostics += Diagnostic("Expected expression", tok.line, tok.char, len)
                 null
             }
         }

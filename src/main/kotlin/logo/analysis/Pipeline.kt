@@ -27,7 +27,7 @@ fun analyse(source: String): AnalysisResult {
     val parser = LogoParser(tokens, arities)
     val ast = parser.parse()
 
-    val symbolTable = SymbolTableBuilder(ast).build()
+    val symbolResult = SymbolTableBuilder(ast).build()
 
-    return AnalysisResult(ast, symbolTable, parser.diagnostics)
+    return AnalysisResult(ast, symbolResult.table, parser.diagnostics + symbolResult.diagnostics)
 }

@@ -10,6 +10,10 @@ import org.eclipse.lsp4j.*
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 import org.eclipse.lsp4j.services.*
 import java.util.concurrent.CompletableFuture
+import logo.diagnostics.Diagnostic as LogoDiagnostic
+import logo.diagnostics.DiagnosticSeverity as LogoDiagnosticSeverity
+import org.eclipse.lsp4j.Diagnostic as LspDiagnostic
+import org.eclipse.lsp4j.DiagnosticSeverity as LspDiagnosticSeverity
 
 class LogoLanguageServer : LanguageServer, LanguageClientAware {
 
@@ -20,16 +24,23 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
 
         override fun didOpen(params: DidOpenTextDocumentParams) {
             val doc = params.textDocument
-            cache[doc.uri] = analyse(doc.text)
+            val result = analyse(doc.text)
+            cache[doc.uri] = result
+            publish(doc.uri, result)
         }
 
         override fun didChange(params: DidChangeTextDocumentParams) {
             val uri = params.textDocument.uri
-            cache[uri] = analyse(params.contentChanges.last().text)
+            val result = analyse(params.contentChanges.last().text)
+            cache[uri] = result
+            publish(uri, result)
         }
 
         override fun didClose(params: DidCloseTextDocumentParams) {
-            cache.remove(params.textDocument.uri)
+            val uri = params.textDocument.uri
+            cache.remove(uri)
+            // Clear any stale squiggles left in the editor for this file
+            client?.publishDiagnostics(PublishDiagnosticsParams(uri, emptyList()))
         }
 
         override fun didSave(params: DidSaveTextDocumentParams) = Unit
@@ -88,4 +99,19 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
     override fun getTextDocumentService(): TextDocumentService = textDocumentService
     override fun getWorkspaceService(): WorkspaceService = workspaceService
     override fun connect(client: LanguageClient) { this.client = client }
+
+    private fun publish(uri: String, result: AnalysisResult) {
+        val lspDiagnostics = result.diagnostics.map { it.toLsp() }
+        client?.publishDiagnostics(PublishDiagnosticsParams(uri, lspDiagnostics))
+    }
+
+    private fun LogoDiagnostic.toLsp(): LspDiagnostic {
+        val start = Position(line, char)
+        val end = Position(line, char + length)
+        val lspSeverity = when (severity) {
+            LogoDiagnosticSeverity.ERROR -> LspDiagnosticSeverity.Error
+            LogoDiagnosticSeverity.WARNING -> LspDiagnosticSeverity.Warning
+        }
+        return LspDiagnostic(Range(start, end), message, lspSeverity, "logo")
+    }
 }

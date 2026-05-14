@@ -1,5 +1,7 @@
 package logo.analysis
 
+import logo.diagnostics.Diagnostic
+import logo.diagnostics.DiagnosticSeverity
 import logo.lexer.Token
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
@@ -12,9 +14,8 @@ import logo.parser.VariableRefNode
  * Symbol table populated by walking the AST after parsing
  * - proceduresByName: user-defined procedures keyed by name (for go-to-declaration on call sites)
  * - varReferences: each variable reference token mapped to the parameter declaration token it resolves to,
- *   keyed by Token (not VariableRefNode) because Token is a data class whose (line, char) make distinct
- *   refs naturally distinguishable, and it keeps the map free of AST-node stuff,
- *   unresolved refs (no matching parameter in scope) will return null
+ *   keyed by Token because Token is a data class whose (line, char) make distinct refs naturally
+ *   distinguishable, unresolved refs (no matching parameter in scope) are omitted
  */
 class SymbolTable {
     val proceduresByName: MutableMap<String, ProcedureDefNode> = mutableMapOf()
@@ -22,37 +23,57 @@ class SymbolTable {
 }
 
 /**
+ * Result of walking the AST, contains both the populated table and any semantic diagnostics
+ * (currently only "unbound variable") encountered during the walk
+ */
+data class SymbolTableResult(val table: SymbolTable, val diagnostics: List<Diagnostic>)
+
+/**
  * Walks the AST and registers every top-level ProcedureDefNode by its (lowercased) name
  * If the same name is defined twice, the later definition is used (LOGO's "to" redefines a procedure)
- * For each procedure, also resolves variable references in its body against its parameters
+ * For each procedure, resolves variable references in its body against its parameters
+ * Variable refs that don't resolve (whether in a body or at the top level) become WARNING diagnostics
  */
 class SymbolTableBuilder(private val ast: ProgramNode) {
-    fun build(): SymbolTable {
-        val table = SymbolTable()
+    private val table = SymbolTable()
+    private val diagnostics = mutableListOf<Diagnostic>()
+
+    fun build(): SymbolTableResult {
         for (stmt in ast.statements) {
-            if (stmt is ProcedureDefNode) {
-                table.proceduresByName[stmt.nameToken.text] = stmt
-                resolveBodyRefs(stmt, table)
+            when (stmt) {
+                is ProcedureDefNode -> {
+                    table.proceduresByName[stmt.nameToken.text] = stmt
+                    val params = stmt.params.associateBy { it.text }
+                    for (bodyStmt in stmt.body) walkStatement(bodyStmt, params)
+                }
+                is CommandNode -> walkStatement(stmt, emptyMap())
             }
         }
-        return table
+        return SymbolTableResult(table, diagnostics)
     }
 
-    private fun resolveBodyRefs(def: ProcedureDefNode, table: SymbolTable) {
-        val paramsByName = def.params.associateBy { it.text }
-        for (stmt in def.body) walkStatement(stmt, paramsByName, table)
-    }
-
-    private fun walkStatement(stmt: StatementNode, params: Map<String, Token>, table: SymbolTable) {
+    private fun walkStatement(stmt: StatementNode, params: Map<String, Token>) {
         when (stmt) {
-            is CommandNode -> for (arg in stmt.args) walkExpression(arg, params, table)
+            is CommandNode -> for (arg in stmt.args) walkExpression(arg, params)
             is ProcedureDefNode -> Unit // nested defs aren't part of the current language subset
         }
     }
 
-    private fun walkExpression(expr: ExpressionNode, params: Map<String, Token>, table: SymbolTable) {
+    private fun walkExpression(expr: ExpressionNode, params: Map<String, Token>) {
         if (expr is VariableRefNode) {
-            params[expr.token.text]?.let { table.varReferences[expr.token] = it }
+            val decl = params[expr.token.text]
+            if (decl != null) {
+                table.varReferences[expr.token] = decl
+            } else {
+                // VARIABLE token's char points at ':' but text excludes it, so span = text.length + 1
+                diagnostics += Diagnostic(
+                    message = "Unbound variable ':${expr.token.text}'",
+                    line = expr.token.line,
+                    char = expr.token.char,
+                    length = expr.token.text.length + 1,
+                    severity = DiagnosticSeverity.WARNING,
+                )
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 package logo.analysis
 
-import logo.parser.Diagnostic
+import logo.diagnostics.Diagnostic
 import logo.parser.ProgramNode
 
 /**
