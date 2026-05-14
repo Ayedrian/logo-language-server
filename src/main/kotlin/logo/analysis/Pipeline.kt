@@ -15,6 +15,10 @@ val BUILTIN_ARITIES: Map<String, Int> = mapOf(
     "product" to 2, "quotient" to 2,
     "penup" to 0, "pu" to 0,
     "pendown" to 0, "pd" to 0,
+    // variable binding — first arg is a quoted-word name; localmake also takes a value
+    "make" to 2,
+    "local" to 1,
+    "localmake" to 2,
     // block-taking primitives — the last arg (or the second of two args) is an instruction list
     "repeat" to 2,
     "forever" to 1,

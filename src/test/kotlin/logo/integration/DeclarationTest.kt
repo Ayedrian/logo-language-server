@@ -164,6 +164,21 @@ class DeclarationTest {
     }
 
     @Test
+    fun `go-to-declaration on variable ref jumps to make declaration`() {
+        // to f make "x 5 print :x end
+        //  0  3 5    10 13 15    21    27
+        val source = "to f make \"x 5 print :x end"
+        val result = analyse(source)
+        // Cursor on body :x at char 22 (the 'x' after ':')
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 22)
+        assertNotNull(target)
+        // "x in `make "x 5` spans [10, 12) — char 10 is '"', char 11 is 'x'
+        assertEquals(0, target.range.line)
+        assertEquals(10, target.range.startChar)
+        assertEquals(12, target.range.endChar)
+    }
+
+    @Test
     fun `go-to-declaration on variadic call name jumps to its definition`() {
         // line 0: to greet :n print :n end
         // line 1: (greet 1)

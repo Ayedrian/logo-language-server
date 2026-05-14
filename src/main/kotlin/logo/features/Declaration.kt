@@ -113,8 +113,9 @@ private fun Token.contains(line: Int, char: Int): Boolean =
 private fun Token.containsWithLeadingColon(line: Int, char: Int): Boolean =
     this.line == line && char >= this.char && char < this.char + this.text.length + 1
 
-// For VARIABLE tokens the on-screen span is ":name" (text.length + 1) because char points at ':'.
+// VARIABLE / QUOTED_WORD tokens' char points at the leading ':' or '"' but text excludes it,
+// so the on-screen span is text.length + 1.
 private fun Token.toRange(): TokenRange {
-    val extra = if (this.type == TokenType.VARIABLE) 1 else 0
+    val extra = if (this.type == TokenType.VARIABLE || this.type == TokenType.QUOTED_WORD) 1 else 0
     return TokenRange(this.line, this.char, this.char + this.text.length + extra)
 }
