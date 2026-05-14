@@ -109,6 +109,49 @@ A handful of LSP protocol features were deliberately placed out of scope:
   `:name` as a variable reference, and we don't handle this one specific
   lexeme. All other UCBLogo primitives (including the backtick `` ` `` macro reader)
   are recognized.
+- **Number forms `.5` and `1e6`**, only `digits[.digits]?` is recognized as a
+  NUMBER. Floats with a leading dot (`.5`) lex as UNKNOWN + NUMBER, and scientific
+  notation (`1e6`) lexes as NUMBER + IDENTIFIER. Workaround for now
+  would be to write write `0.5` and `1000000` instead.
+
+### Diagnostics
+
+The diagnostic model is intentionally minimal:
+
+- **Single-line ranges** — every diagnostic spans a `(line, char, length)`
+  triple on one line. Multi-line ranges are not produced.
+- **No tags or related-information**: we emit only `message + range + severity`.
+  LSP fields like `tags` (e.g. `Unnecessary`, `Deprecated`) and
+  `relatedInformation` are currently not populated.
+- **No code actions / quick fixes**: `textDocument/codeAction` is not
+  advertised, diagnostics carry no suggested fixes.
+- **Silent error recovery in some cases** — the parser's `skipUnknown` step
+  silently drops `UNKNOWN` tokens at statement boundaries. A stray `@` or
+  similar character unknown to the lexer will not produce a diagnostic on its own;
+  the user only sees an error if the surrounding parse fails.
+
+### `make` / `localmake` / `local` with non-literal names
+
+Bindings are tracked only when the name is a `QUOTED_WORD` literal:
+
+```
+make "x 5          ; tracked, "x is a literal name
+make :name 5       ; silently skipped, name comes from a runtime value
+make sum 1 2 3     ; silently skipped, name is a computed expression
+```
+
+Non-literal forms produce no binding (and no diagnostic). Statically, we can't
+know which name gets bound, so any later `:x` ref relies on the dynamic-scoping
+fallback to suppress the false-positive warning.
+
+### Lists as data vs. lists as code
+
+Bracketed `[...]` always parses as a **`BlockExpressionNode` of statements**
+(i.e. code). LOGO also uses `[...]` for **word lists as data** (`print [a b c]`,
+`sentence [hello] [world]`), but we don't distinguish the two: in `print [a b c]`,
+the inner `a`, `b`, `c` parse as arity zero calls, not as word data. This matches
+the existing "first-class instruction lists" caveat — block contents are
+opaque to all our features beyond the lexical recursion described above.
 
 ### Dynamic scoping
 
