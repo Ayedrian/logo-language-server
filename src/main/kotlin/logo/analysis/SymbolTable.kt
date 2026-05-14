@@ -3,12 +3,14 @@ package logo.analysis
 import logo.diagnostics.Diagnostic
 import logo.diagnostics.DiagnosticSeverity
 import logo.lexer.Token
+import logo.parser.BinaryOpNode
 import logo.parser.BlockExpressionNode
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
 import logo.parser.ProcedureDefNode
 import logo.parser.ProgramNode
 import logo.parser.StatementNode
+import logo.parser.UnaryOpNode
 import logo.parser.VariableRefNode
 
 /**
@@ -80,6 +82,8 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
             // statements inside a block resolve against the same scope as the enclosing context;
             // block-local bindings (LOCAL / MAKE) are deferred to a later slice
             is BlockExpressionNode -> for (stmt in expr.statements) walkStatement(stmt, params)
+            is BinaryOpNode -> { walkExpression(expr.left, params); walkExpression(expr.right, params) }
+            is UnaryOpNode -> walkExpression(expr.operand, params)
             else -> Unit
         }
     }

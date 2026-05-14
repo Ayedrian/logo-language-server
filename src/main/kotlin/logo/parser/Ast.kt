@@ -45,3 +45,18 @@ data class BlockExpressionNode(
     val statements: List<StatementNode>,
     val rbracket: Token?,
 ) : ExpressionNode()
+
+// infix arithmetic: '+', '-', '*', '/'. Left-associative; precedence is encoded by the
+// shape of the tree (parser builds multiplicative groups deeper than additive ones).
+// op carries the operator token (for source-position info).
+data class BinaryOpNode(
+    val op: Token,
+    val left: ExpressionNode,
+    val right: ExpressionNode,
+) : ExpressionNode()
+
+// prefix unary minus. The UCBLogo grammar only has '-' as a unary operator (no unary '+').
+data class UnaryOpNode(
+    val op: Token,
+    val operand: ExpressionNode,
+) : ExpressionNode()

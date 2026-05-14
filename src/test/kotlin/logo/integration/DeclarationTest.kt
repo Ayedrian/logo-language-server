@@ -102,4 +102,19 @@ class DeclarationTest {
         assertEquals(10, target.range.startChar)
         assertEquals(15, target.range.endChar)
     }
+
+    @Test
+    fun `go-to-declaration on variable ref inside arithmetic jumps to param`() {
+        // line 0: to f :x fd :x + 1 end
+        //          0  3 5  8  11 14 16 18
+        val source = "to f :x fd :x + 1 end"
+        val result = analyse(source)
+        // Cursor on the body ":x" at char 12 (the 'x')
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 12)
+        assertNotNull(target)
+        // Header ":x" spans columns [5, 7)
+        assertEquals(0, target.range.line)
+        assertEquals(5, target.range.startChar)
+        assertEquals(7, target.range.endChar)
+    }
 }

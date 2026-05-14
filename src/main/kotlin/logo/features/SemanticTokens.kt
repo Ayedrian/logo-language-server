@@ -2,11 +2,13 @@ package logo.features
 
 import logo.lexer.TokenType
 import logo.parser.AstNode
+import logo.parser.BinaryOpNode
 import logo.parser.BlockExpressionNode
 import logo.parser.CommandNode
 import logo.parser.NumberNode
 import logo.parser.ProcedureDefNode
 import logo.parser.ProgramNode
+import logo.parser.UnaryOpNode
 import logo.parser.VariableRefNode
 
 /**
@@ -72,6 +74,8 @@ private fun visitExpression(node: AstNode, out: MutableList<RawSemanticToken>) {
             out += RawSemanticToken(tok.line, tok.char, tok.text.length + 1, SemanticTokenKind.PARAMETER)
         }
         is BlockExpressionNode -> for (stmt in node.statements) visitStatement(stmt, out)
+        is BinaryOpNode -> { visitExpression(node.left, out); visitExpression(node.right, out) }
+        is UnaryOpNode -> visitExpression(node.operand, out)
         else -> Unit
     }
 }

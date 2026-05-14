@@ -118,4 +118,121 @@ class ParserTest {
         val d = parser.diagnostics.single()
         assertEquals("square".length, d.length)
     }
+
+    @Test
+    fun `unary minus on number restores 'bk -10' behavior`() {
+        val tokens = Lexer("bk -10").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals("bk", cmd.nameToken.text)
+        assertEquals(1, cmd.args.size)
+        val neg = assertIs<UnaryOpNode>(cmd.args[0])
+        assertEquals("-", neg.op.text)
+        val num = assertIs<NumberNode>(neg.operand)
+        assertEquals(10.0, num.value)
+        assertEquals(0, parser.diagnostics.size)
+    }
+
+    @Test
+    fun `binary plus parses as BinaryOpNode`() {
+        val program = parse("print 1 + 2")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals(1, cmd.args.size)
+        val bin = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("+", bin.op.text)
+        assertEquals(1.0, assertIs<NumberNode>(bin.left).value)
+        assertEquals(2.0, assertIs<NumberNode>(bin.right).value)
+    }
+
+    @Test
+    fun `multiplicative has higher precedence than additive`() {
+        // 1 + 2 * 3 → (+ 1 (* 2 3))
+        val program = parse("print 1 + 2 * 3")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("+", outer.op.text)
+        assertEquals(1.0, assertIs<NumberNode>(outer.left).value)
+        val inner = assertIs<BinaryOpNode>(outer.right)
+        assertEquals("*", inner.op.text)
+        assertEquals(2.0, assertIs<NumberNode>(inner.left).value)
+        assertEquals(3.0, assertIs<NumberNode>(inner.right).value)
+    }
+
+    @Test
+    fun `additive is left-associative`() {
+        // 1 - 2 - 3 → (- (- 1 2) 3)
+        val program = parse("print 1 - 2 - 3")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("-", outer.op.text)
+        assertEquals(3.0, assertIs<NumberNode>(outer.right).value)
+        val inner = assertIs<BinaryOpNode>(outer.left)
+        assertEquals("-", inner.op.text)
+        assertEquals(1.0, assertIs<NumberNode>(inner.left).value)
+        assertEquals(2.0, assertIs<NumberNode>(inner.right).value)
+    }
+
+    @Test
+    fun `parens override precedence`() {
+        // (1 + 2) * 3 → (* (+ 1 2) 3)
+        val program = parse("print (1 + 2) * 3")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("*", outer.op.text)
+        val inner = assertIs<BinaryOpNode>(outer.left)
+        assertEquals("+", inner.op.text)
+        assertEquals(3.0, assertIs<NumberNode>(outer.right).value)
+    }
+
+    @Test
+    fun `double unary minus nests`() {
+        // bk - -10 → bk [ -(-10) ]
+        val tokens = Lexer("bk - -10").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<UnaryOpNode>(cmd.args[0])
+        val inner = assertIs<UnaryOpNode>(outer.operand)
+        assertEquals(10.0, assertIs<NumberNode>(inner.operand).value)
+        assertEquals(0, parser.diagnostics.size)
+    }
+
+    @Test
+    fun `unary minus on variable parses`() {
+        // fd -:size  →  fd [ -(:size) ]
+        val program = parse("to f :size fd -:size end")
+        val def = assertIs<ProcedureDefNode>(program.statements[0])
+        val cmd = assertIs<CommandNode>(def.body[0])
+        val neg = assertIs<UnaryOpNode>(cmd.args[0])
+        val ref = assertIs<VariableRefNode>(neg.operand)
+        assertEquals("size", ref.token.text)
+    }
+
+    @Test
+    fun `variable reference inside arithmetic parses`() {
+        // to f :x fd :x + 1 end
+        val program = parse("to f :x fd :x + 1 end")
+        val def = assertIs<ProcedureDefNode>(program.statements[0])
+        val cmd = assertIs<CommandNode>(def.body[0])
+        val bin = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("x", assertIs<VariableRefNode>(bin.left).token.text)
+        assertEquals(1.0, assertIs<NumberNode>(bin.right).value)
+    }
+
+    @Test
+    fun `missing closing paren emits diagnostic and recovers`() {
+        val tokens = Lexer("print (1 + 2").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        // The inner expression still came through as the print arg
+        assertEquals(1, cmd.args.size)
+        assertIs<BinaryOpNode>(cmd.args[0])
+        val d = parser.diagnostics.single()
+        assertEquals(1, d.length) // spans the "(" token
+    }
 }

@@ -81,4 +81,27 @@ class SemanticTokensTest {
         assertEquals(19, params[1].char)
         assertEquals(5, params[1].length)
     }
+
+    @Test
+    fun `arithmetic operands still emit tokens, operators do not`() {
+        // line 0: print 1 + 2
+        //          0     6 8 10
+        val result = analyse("print 1 + 2")
+        val tokens = collectSemanticTokens(result.ast)
+        // Expect: FUNCTION print, NUMBER 1, NUMBER 2 — '+' has no kind
+        assertEquals(
+            listOf(SemanticTokenKind.FUNCTION, SemanticTokenKind.NUMBER, SemanticTokenKind.NUMBER),
+            tokens.map { it.kind },
+        )
+        assertEquals(6, tokens[1].char)
+        assertEquals(10, tokens[2].char)
+    }
+
+    @Test
+    fun `variable ref inside arithmetic still emits PARAMETER token`() {
+        // to f :x fd :x + 1 end
+        val result = analyse("to f :x fd :x + 1 end")
+        val params = collectSemanticTokens(result.ast).filter { it.kind == SemanticTokenKind.PARAMETER }
+        assertEquals(2, params.size) // header :x and body :x
+    }
 }

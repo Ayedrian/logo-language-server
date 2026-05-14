@@ -84,10 +84,44 @@ class LogoParser(
     }
 
     /**
-     * Parse an expression, currently only a number is supported
-     * TODO: Support more types of expressions in LOGO
+     * Expression entry point. Implemented as a precedence-climbing recursive descent:
+     *   additive ( + - )  →  multiplicative ( * / )  →  unary ( prefix - )  →  primary
+     * Both binary levels are left-associative. Block expressions [ ... ] only appear at
+     * primary level (they can't combine with arithmetic). Parens '(' expr ')' are
+     * transparent — no ParenExpressionNode, the inner expression is returned directly.
      */
-    private fun parseExpression(): ExpressionNode? {
+    private fun parseExpression(): ExpressionNode? = parseAdditive()
+
+    private fun parseAdditive(): ExpressionNode? {
+        var left = parseMultiplicative() ?: return null
+        while (!isAtEnd() && (current().type == TokenType.PLUS || current().type == TokenType.MINUS)) {
+            val op = consume()
+            val right = parseMultiplicative() ?: return left
+            left = BinaryOpNode(op, left, right)
+        }
+        return left
+    }
+
+    private fun parseMultiplicative(): ExpressionNode? {
+        var left = parseUnary() ?: return null
+        while (!isAtEnd() && (current().type == TokenType.STAR || current().type == TokenType.SLASH)) {
+            val op = consume()
+            val right = parseUnary() ?: return left
+            left = BinaryOpNode(op, left, right)
+        }
+        return left
+    }
+
+    private fun parseUnary(): ExpressionNode? {
+        if (!isAtEnd() && current().type == TokenType.MINUS) {
+            val op = consume()
+            val operand = parseUnary() ?: return null
+            return UnaryOpNode(op, operand)
+        }
+        return parsePrimary()
+    }
+
+    private fun parsePrimary(): ExpressionNode? {
         val tok = current()
         return when (tok.type) {
             TokenType.NUMBER -> {
@@ -99,6 +133,7 @@ class LogoParser(
                 VariableRefNode(tok)
             }
             TokenType.LBRACKET -> parseBlock()
+            TokenType.LPAREN -> parseParenExpression()
             else -> {
                 // EOF has empty text; use length 1 so the LSP range is well-formed
                 val len = if (tok.text.isEmpty()) 1 else tok.text.length
@@ -106,6 +141,22 @@ class LogoParser(
                 null
             }
         }
+    }
+
+    /**
+     * Parses '( expr )'. Parens are transparent — the inner expression is returned directly.
+     * On missing ')' (EOF reached), emits a diagnostic spanning the opening '(' and returns
+     * the partial inner expression. Variadic call form ( name args* ) is deferred to slice 9.
+     */
+    private fun parseParenExpression(): ExpressionNode? {
+        val lparen = consume() // "("
+        val inner = parseExpression()
+        if (isAtEnd() || current().type != TokenType.RPAREN) {
+            diagnostics += Diagnostic("Expected ')' to close expression", lparen.line, lparen.char, lparen.text.length)
+        } else {
+            consume() // ")"
+        }
+        return inner
     }
 
     /**

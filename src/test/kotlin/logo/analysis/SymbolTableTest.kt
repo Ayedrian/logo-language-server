@@ -78,4 +78,24 @@ class SymbolTableTest {
         assertEquals(6, d.char)
         assertEquals(4, d.length)
     }
+
+    @Test
+    fun `variable reference inside arithmetic resolves to header param`() {
+        // to f :x fd :x + 1 end
+        val result = analyse("to f :x fd :x + 1 end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (refToken, declToken) = refs.entries.single()
+        assertEquals("x", refToken.text)
+        assertEquals("x", declToken.text)
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `unbound variable inside arithmetic is flagged`() {
+        val result = analyse("to f :x fd :y + 1 end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertTrue("y" in d.message)
+    }
 }
