@@ -4,6 +4,7 @@ import logo.analysis.SymbolTable
 import logo.lexer.Token
 import logo.lexer.TokenType
 import logo.parser.AstNode
+import logo.parser.BlockExpressionNode
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
 import logo.parser.ProcedureDefNode
@@ -73,6 +74,7 @@ private fun findInExpression(expr: ExpressionNode, line: Int, char: Int): AstNod
     return when (expr) {
         // VARIABLE token's char points at ':' and text excludes it, so the ":name" span is text.length + 1
         is VariableRefNode -> if (expr.token.containsWithLeadingColon(line, char)) expr else null
+        is BlockExpressionNode -> findNodeAt(expr.statements, line, char)
         else -> null
     }
 }

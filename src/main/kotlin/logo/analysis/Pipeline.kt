@@ -15,6 +15,14 @@ val BUILTIN_ARITIES: Map<String, Int> = mapOf(
     "product" to 2, "quotient" to 2,
     "penup" to 0, "pu" to 0,
     "pendown" to 0, "pd" to 0,
+    // block-taking primitives — the last arg (or the second of two args) is an instruction list
+    "repeat" to 2,
+    "forever" to 1,
+    "if" to 2,
+    "ifelse" to 3,
+    "while" to 2,
+    "do.while" to 2,
+    "foreach" to 2,
 )
 
 fun analyse(source: String): AnalysisResult {

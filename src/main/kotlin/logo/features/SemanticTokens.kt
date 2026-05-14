@@ -2,6 +2,7 @@ package logo.features
 
 import logo.lexer.TokenType
 import logo.parser.AstNode
+import logo.parser.BlockExpressionNode
 import logo.parser.CommandNode
 import logo.parser.NumberNode
 import logo.parser.ProcedureDefNode
@@ -70,6 +71,7 @@ private fun visitExpression(node: AstNode, out: MutableList<RawSemanticToken>) {
             val tok = node.token
             out += RawSemanticToken(tok.line, tok.char, tok.text.length + 1, SemanticTokenKind.PARAMETER)
         }
+        is BlockExpressionNode -> for (stmt in node.statements) visitStatement(stmt, out)
         else -> Unit
     }
 }

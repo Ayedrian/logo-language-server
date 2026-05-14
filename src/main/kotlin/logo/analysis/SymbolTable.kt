@@ -3,6 +3,7 @@ package logo.analysis
 import logo.diagnostics.Diagnostic
 import logo.diagnostics.DiagnosticSeverity
 import logo.lexer.Token
+import logo.parser.BlockExpressionNode
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
 import logo.parser.ProcedureDefNode
@@ -60,20 +61,26 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
     }
 
     private fun walkExpression(expr: ExpressionNode, params: Map<String, Token>) {
-        if (expr is VariableRefNode) {
-            val decl = params[expr.token.text]
-            if (decl != null) {
-                table.varReferences[expr.token] = decl
-            } else {
-                // VARIABLE token's char points at ':' but text excludes it, so span = text.length + 1
-                diagnostics += Diagnostic(
-                    message = "Unbound variable ':${expr.token.text}'",
-                    line = expr.token.line,
-                    char = expr.token.char,
-                    length = expr.token.text.length + 1,
-                    severity = DiagnosticSeverity.WARNING,
-                )
+        when (expr) {
+            is VariableRefNode -> {
+                val decl = params[expr.token.text]
+                if (decl != null) {
+                    table.varReferences[expr.token] = decl
+                } else {
+                    // VARIABLE token's char points at ':' but text excludes it, so span = text.length + 1
+                    diagnostics += Diagnostic(
+                        message = "Unbound variable ':${expr.token.text}'",
+                        line = expr.token.line,
+                        char = expr.token.char,
+                        length = expr.token.text.length + 1,
+                        severity = DiagnosticSeverity.WARNING,
+                    )
+                }
             }
+            // statements inside a block resolve against the same scope as the enclosing context;
+            // block-local bindings (LOCAL / MAKE) are deferred to a later slice
+            is BlockExpressionNode -> for (stmt in expr.statements) walkStatement(stmt, params)
+            else -> Unit
         }
     }
 }

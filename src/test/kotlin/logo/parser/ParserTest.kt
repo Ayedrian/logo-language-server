@@ -70,6 +70,42 @@ class ParserTest {
     }
 
     @Test
+    fun `parses repeat with bracketed block`() {
+        val program = parse("repeat 4 [ fd 10 ]")
+        assertEquals(1, program.statements.size)
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals("repeat", cmd.nameToken.text)
+        assertEquals(2, cmd.args.size)
+        assertIs<NumberNode>(cmd.args[0])
+        val block = assertIs<BlockExpressionNode>(cmd.args[1])
+        assertEquals(1, block.statements.size)
+        val inner = assertIs<CommandNode>(block.statements[0])
+        assertEquals("fd", inner.nameToken.text)
+    }
+
+    @Test
+    fun `parses empty block`() {
+        val program = parse("repeat 4 [ ]")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val block = assertIs<BlockExpressionNode>(cmd.args[1])
+        assertEquals(0, block.statements.size)
+    }
+
+    @Test
+    fun `missing closing bracket emits diagnostic and still returns partial block`() {
+        val tokens = Lexer("repeat 4 [ fd 10").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val block = assertIs<BlockExpressionNode>(cmd.args[1])
+        assertEquals(1, block.statements.size)
+        assertEquals(null, block.rbracket)
+        val d = parser.diagnostics.single()
+        assertEquals(1, d.length) // spans the "[" token
+    }
+
+    @Test
     fun `missing end emits diagnostic and still returns partial def`() {
         val tokens = Lexer("to square :size fd 1").tokenise()
         val scanner = FirstPassScanner(tokens).also { it.scan() }

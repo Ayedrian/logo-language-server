@@ -36,3 +36,12 @@ data class NumberNode(val value: Double, val token: Token) : ExpressionNode()
 
 // a variable reference, written as ":name" in LOGO, token.text is name without the colon
 data class VariableRefNode(val token: Token) : ExpressionNode()
+
+// a bracketed instruction list "[ stmt ... ]" passed as an argument to a block-taking primitive
+// (repeat, if, ifelse, while, ...). lbracket/rbracket are kept for semantic-token highlighting and
+// for diagnostics; rbracket is null if "]" was missing
+data class BlockExpressionNode(
+    val lbracket: Token,
+    val statements: List<StatementNode>,
+    val rbracket: Token?,
+) : ExpressionNode()

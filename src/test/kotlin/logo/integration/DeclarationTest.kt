@@ -64,6 +64,35 @@ class DeclarationTest {
     }
 
     @Test
+    fun `go-to-declaration on variable ref inside a block jumps to param`() {
+        // line 0: to f :size repeat 4 [ fd :size ] end
+        //          0  3 5    11     18 20 22 25    31
+        val source = "to f :size repeat 4 [ fd :size ] end"
+        val result = analyse(source)
+        // Cursor on the inner ":size" at char 26 (the "s" of size)
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 26)
+        assertNotNull(target)
+        // Header ":size" spans columns [5, 10)
+        assertEquals(0, target.range.line)
+        assertEquals(5, target.range.startChar)
+        assertEquals(10, target.range.endChar)
+    }
+
+    @Test
+    fun `go-to-declaration on procedure call inside a block jumps to its definition`() {
+        // line 0: to square :size fd :size end
+        // line 1: repeat 4 [ square 10 ]
+        val source = "to square :size fd :size end\nrepeat 4 [ square 10 ]"
+        val result = analyse(source)
+        // Cursor on "square" inside the block on line 1, char 12 ("sq^uare")
+        val target = findDeclaration(result.ast, result.symbolTable, line = 1, char = 12)
+        assertNotNull(target)
+        assertEquals(0, target.range.line)
+        assertEquals(3, target.range.startChar)
+        assertEquals(9, target.range.endChar)
+    }
+
+    @Test
     fun `go-to-declaration on param declaration returns itself`() {
         val result = analyse("to square :size fd :size end")
         // Cursor on the header ":size" at char 10 (the colon itself)

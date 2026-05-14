@@ -50,6 +50,24 @@ class SymbolTableTest {
     }
 
     @Test
+    fun `variable references inside a block resolve against the enclosing procedure params`() {
+        // to f :x repeat :x [ fd :x ] end
+        val result = analyse("to f :x repeat :x [ fd :x ] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(2, refs.size)
+        assertTrue(refs.keys.all { it.text == "x" })
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `unbound variable inside a block is flagged`() {
+        val result = analyse("to f :x repeat 4 [ fd :y ] end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertTrue("y" in d.message)
+    }
+
+    @Test
     fun `top-level variable reference is flagged as unbound`() {
         // line 0: print :foo
         //          0     6

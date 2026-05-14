@@ -98,6 +98,7 @@ class LogoParser(
                 consume()
                 VariableRefNode(tok)
             }
+            TokenType.LBRACKET -> parseBlock()
             else -> {
                 // EOF has empty text; use length 1 so the LSP range is well-formed
                 val len = if (tok.text.isEmpty()) 1 else tok.text.length
@@ -105,6 +106,28 @@ class LogoParser(
                 null
             }
         }
+    }
+
+    /**
+     * Parses "[ <statements> ]" as a block expression. Statements inside a block use the same
+     * parsing logic as top-level statements. On missing "]" (EOF reached), emits a diagnostic
+     * spanning the opening "[" and returns a partial block with rbracket = null.
+     */
+    private fun parseBlock(): BlockExpressionNode {
+        val lbracket = consume() // "["
+        val statements = mutableListOf<StatementNode>()
+        while (!isAtEnd() && current().type != TokenType.RBRACKET) {
+            skipUnknown()
+            if (isAtEnd() || current().type == TokenType.RBRACKET) break
+            parseStatement()?.let { statements += it }
+        }
+        val rbracket = if (isAtEnd()) {
+            diagnostics += Diagnostic("Expected ']' to close block", lbracket.line, lbracket.char, lbracket.text.length)
+            null
+        } else {
+            consume()
+        }
+        return BlockExpressionNode(lbracket, statements, rbracket)
     }
 
     // Error recovery: skip unrecognised tokens before a statement boundary

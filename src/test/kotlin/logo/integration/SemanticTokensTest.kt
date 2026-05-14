@@ -49,6 +49,24 @@ class SemanticTokensTest {
     }
 
     @Test
+    fun `statements inside a block get semantic tokens`() {
+        // line 0: repeat 4 [ fd 10 ]
+        //          0      7 9  11 14 17
+        val result = analyse("repeat 4 [ fd 10 ]")
+        val kinds = collectSemanticTokens(result.ast).map { it.kind }
+        // repeat → FUNCTION, 4 → NUMBER, fd → FUNCTION, 10 → NUMBER
+        assertEquals(
+            listOf(
+                SemanticTokenKind.FUNCTION,
+                SemanticTokenKind.NUMBER,
+                SemanticTokenKind.FUNCTION,
+                SemanticTokenKind.NUMBER,
+            ),
+            kinds,
+        )
+    }
+
+    @Test
     fun `both colon-name occurrences get PARAMETER tokens`() {
         // line 0: to square :size fd :size end
         //          0  3      10    16 19    25
