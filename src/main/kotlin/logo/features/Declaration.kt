@@ -3,18 +3,7 @@ package logo.features
 import logo.analysis.SymbolTable
 import logo.lexer.Token
 import logo.lexer.TokenType
-import logo.parser.ArrayLiteralNode
-import logo.parser.AstNode
-import logo.parser.BinaryOpNode
-import logo.parser.BlockExpressionNode
-import logo.parser.CallExpressionNode
-import logo.parser.CommandNode
-import logo.parser.ExpressionNode
-import logo.parser.ProcedureDefNode
 import logo.parser.ProgramNode
-import logo.parser.StatementNode
-import logo.parser.UnaryOpNode
-import logo.parser.VariableRefNode
 
 /**
  * A source range in LSP terms: half-open, zero-based
@@ -31,87 +20,26 @@ data class DeclarationTarget(val range: TokenRange)
 /**
  * Finds the declaration target for the cursor at (line, char), if there is any.
  *
- * Resolution order:
- *  - cursor on a parameter declaration token in a "to" header: self-jump (return its own range)
- *  - cursor on a procedure call name: look up the user definition via proceduresByName
- *  - cursor on a variable reference (:name in a body): look up the param decl via varReferences
+ * Resolution by node kind under the cursor:
+ *  - parameter declaration in a "to" header: self-jump (return its own range)
+ *  - procedure definition name in a "to"/".macro" header: self-jump
+ *  - procedure call name (statement or expression): look up the user definition via proceduresByName
+ *  - variable reference (:name in a body): look up the decl via varReferences
  * Cursor on a built-in call or on an unbound :name returns null.
  */
 fun findDeclaration(ast: ProgramNode, symbolTable: SymbolTable, line: Int, char: Int): DeclarationTarget? {
-    paramDeclAt(ast.statements, line, char)?.let { return DeclarationTarget(it.toRange()) }
-
-    return when (val node = findNodeAt(ast.statements, line, char)) {
-        is CommandNode -> symbolTable.proceduresByName[node.nameToken.text]
+    return when (val hit = nodeAtCursor(ast, line, char)) {
+        is NodeAtCursor.ParamDecl -> DeclarationTarget(hit.token.toRange())
+        is NodeAtCursor.ProcedureDefName -> DeclarationTarget(hit.node.nameToken.toRange())
+        is NodeAtCursor.CommandName -> symbolTable.proceduresByName[hit.node.nameToken.text]
             ?.let { DeclarationTarget(it.nameToken.toRange()) }
-        is CallExpressionNode -> symbolTable.proceduresByName[node.nameToken.text]
+        is NodeAtCursor.CallName -> symbolTable.proceduresByName[hit.node.nameToken.text]
             ?.let { DeclarationTarget(it.nameToken.toRange()) }
-        is VariableRefNode -> symbolTable.varReferences[node.token]
+        is NodeAtCursor.VariableRef -> symbolTable.varReferences[hit.node.token]
             ?.let { DeclarationTarget(it.toRange()) }
-        else -> null
+        null -> null
     }
 }
-
-/**
- * Walks statements and returns the innermost AST node whose own token covers the cursor:
- *  - a CommandNode if the cursor is on its name token
- *  - a VariableRefNode if the cursor is on its :name token (inside a command's args)
- */
-private fun findNodeAt(statements: List<StatementNode>, line: Int, char: Int): AstNode? {
-    for (stmt in statements) {
-        when (stmt) {
-            is CommandNode -> {
-                findInCommand(stmt, line, char)?.let { return it }
-            }
-            is ProcedureDefNode -> {
-                findNodeAt(stmt.body, line, char)?.let { return it }
-            }
-        }
-    }
-    return null
-}
-
-private fun findInCommand(cmd: CommandNode, line: Int, char: Int): AstNode? {
-    if (cmd.nameToken.contains(line, char)) return cmd
-    for (arg in cmd.args) findInExpression(arg, line, char)?.let { return it }
-    return null
-}
-
-private fun findInExpression(expr: ExpressionNode, line: Int, char: Int): AstNode? {
-    return when (expr) {
-        // VARIABLE token's char points at ':' and text excludes it, so the ":name" span is text.length + 1
-        is VariableRefNode -> if (expr.token.containsWithLeadingColon(line, char)) expr else null
-        is BlockExpressionNode -> findNodeAt(expr.statements, line, char)
-        is BinaryOpNode -> findInExpression(expr.left, line, char) ?: findInExpression(expr.right, line, char)
-        is UnaryOpNode -> findInExpression(expr.operand, line, char)
-        is CallExpressionNode -> {
-            if (expr.nameToken.contains(line, char)) expr
-            else expr.args.firstNotNullOfOrNull { findInExpression(it, line, char) }
-        }
-        // word and array literals are leaves for navigation purposes — nothing to jump to
-        else -> null
-    }
-}
-
-/**
- * Returns the parameter declaration token under the cursor, if any, by scanning each
- * ProcedureDefNode's header parameters, used to make clicking a ":size" in a "to" header
- * jump to itself rather than returning no result.
- */
-private fun paramDeclAt(statements: List<StatementNode>, line: Int, char: Int): Token? {
-    for (stmt in statements) {
-        if (stmt is ProcedureDefNode) {
-            for (p in stmt.params) if (p.containsWithLeadingColon(line, char)) return p
-        }
-    }
-    return null
-}
-
-private fun Token.contains(line: Int, char: Int): Boolean =
-    this.line == line && char >= this.char && char < this.char + this.text.length
-
-// For VARIABLE tokens: char points at ':' but text excludes it, so the visual span is + 1
-private fun Token.containsWithLeadingColon(line: Int, char: Int): Boolean =
-    this.line == line && char >= this.char && char < this.char + this.text.length + 1
 
 // VARIABLE / QUOTED_WORD tokens' char points at the leading ':' or '"' but text excludes it,
 // so the on-screen span is text.length + 1.

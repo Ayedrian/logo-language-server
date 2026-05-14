@@ -104,6 +104,18 @@ class DeclarationTest {
     }
 
     @Test
+    fun `go-to-declaration on procedure def name returns itself`() {
+        val result = analyse("to square :size fd :size end")
+        // Cursor on the header name "square" at char 5 (the 'q')
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 5)
+        assertNotNull(target)
+        // "square" in "to square :size" spans [3, 9)
+        assertEquals(0, target.range.line)
+        assertEquals(3, target.range.startChar)
+        assertEquals(9, target.range.endChar)
+    }
+
+    @Test
     fun `go-to-declaration on nested call name jumps to its definition`() {
         // line 0: to greet :n print :n end
         // line 1: print greet 1
