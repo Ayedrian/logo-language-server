@@ -6,6 +6,7 @@ import logo.parser.CommandNode
 import logo.parser.NumberNode
 import logo.parser.ProcedureDefNode
 import logo.parser.ProgramNode
+import logo.parser.VariableRefNode
 
 /**
  * Token type legend — indices here must match the list advertised in
@@ -46,7 +47,7 @@ private fun visitStatement(node: AstNode, out: MutableList<RawSemanticToken>) {
             out += RawSemanticToken(name.line, name.char, name.text.length, SemanticTokenKind.FUNCTION)
             for (param in node.params) {
                 // The VARIABLE token's text excludes the leading ':' but its char points at the ':',
-                // so highlight covers the full ":name" (length = name + 1).
+                // so the highlight will cover the full ":name" (length = name + 1).
                 out += RawSemanticToken(param.line, param.char, param.text.length + 1, SemanticTokenKind.PARAMETER)
             }
             for (stmt in node.body) visitStatement(stmt, out)
@@ -63,6 +64,11 @@ private fun visitExpression(node: AstNode, out: MutableList<RawSemanticToken>) {
         is NumberNode -> {
             val tok = node.token
             out += RawSemanticToken(tok.line, tok.char, tok.text.length, SemanticTokenKind.NUMBER)
+        }
+        is VariableRefNode -> {
+            // VARIABLE token's char points at ':' but text excludes it, so cover ":name" (length + 1)
+            val tok = node.token
+            out += RawSemanticToken(tok.line, tok.char, tok.text.length + 1, SemanticTokenKind.PARAMETER)
         }
         else -> Unit
     }

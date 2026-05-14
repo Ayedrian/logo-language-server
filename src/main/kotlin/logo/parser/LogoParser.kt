@@ -96,6 +96,10 @@ class LogoParser(
                 consume()
                 NumberNode(tok.text.toDouble(), tok)
             }
+            TokenType.VARIABLE -> {
+                consume()
+                VariableRefNode(tok)
+            }
             else -> {
                 diagnostics += Diagnostic("Expected expression", tok.line, tok.char)
                 null

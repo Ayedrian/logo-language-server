@@ -33,3 +33,6 @@ sealed class ExpressionNode : AstNode()
 
 // numeric literal with parsed value and original lexer token (for semantic token encodign and diagnostics)
 data class NumberNode(val value: Double, val token: Token) : ExpressionNode()
+
+// a variable reference, written as ":name" in LOGO, token.text is name without the colon
+data class VariableRefNode(val token: Token) : ExpressionNode()
