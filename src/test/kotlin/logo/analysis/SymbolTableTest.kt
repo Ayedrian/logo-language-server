@@ -269,4 +269,136 @@ class SymbolTableTest {
         assertTrue(refs.values.all { it.type == TokenType.QUOTED_WORD })
         assertTrue(result.diagnostics.isEmpty())
     }
+
+    // ---- slice 11: block-level scope tracking ----
+
+    @Test
+    fun `nested block sees binding from enclosing block`() {
+        // to f repeat 3 [ make "z 1 repeat 2 [ print :z ] ] end
+        //  0  3 5      12 14 16   21 23   26    33 35 37   43 45 47
+        val result = analyse("to f repeat 3 [ make \"z 1 repeat 2 [ print :z ] ] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals("z", ref.text)
+        assertEquals(43, ref.char) // inner ":z"
+        assertEquals(TokenType.QUOTED_WORD, decl.type)
+        assertEquals(21, decl.char) // outer block's "z
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `binding inside inner block does not leak to outer block`() {
+        // to f repeat 3 [ repeat 2 [ make "z 1 ] print :z ] end
+        //  0  3 5      12 14 16     23 25    32 34    39 45 47 49
+        val result = analyse("to f repeat 3 [ repeat 2 [ make \"z 1 ] print :z ] end")
+        assertTrue(result.symbolTable.varReferences.isEmpty())
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(45, d.char) // outer block's ":z" colon position
+        assertTrue("z" in d.message)
+    }
+
+    @Test
+    fun `sibling blocks in ifelse do not share bindings`() {
+        // to f ifelse 1 [ make "z 1 ] [ print :z ] end
+        //  0  3 5      12 14 16   21 26 28 30   36
+        val result = analyse("to f ifelse 1 [ make \"z 1 ] [ print :z ] end")
+        assertTrue(result.symbolTable.varReferences.isEmpty())
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(36, d.char) // ":z" in the else-arm
+        assertTrue("z" in d.message)
+    }
+
+    @Test
+    fun `in-block ordering — ref before make is unbound, ref after resolves`() {
+        // to f repeat 3 [ print :z make "z 1 print :z ] end
+        //  0  3 5      12 14 16    22 25   30 32 34 36    42 44 46
+        val result = analyse("to f repeat 3 [ print :z make \"z 1 print :z ] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals(41, ref.char) // second ":z" — after the make
+        assertEquals(TokenType.QUOTED_WORD, decl.type)
+        assertEquals(30, decl.char) // "z
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(22, d.char) // first ":z" — before the make
+    }
+
+    @Test
+    fun `local inside a block binds within the block and does not leak`() {
+        // to f repeat 3 [ local "z print :z ] print :z end
+        //  0  3 5      12 14 16   22 25   31    36 38    44
+        val result = analyse("to f repeat 3 [ local \"z print :z ] print :z end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals(31, ref.char) // in-block ":z"
+        assertEquals(TokenType.QUOTED_WORD, decl.type)
+        assertEquals(22, decl.char) // "z
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(42, d.char) // out-of-block ":z"
+    }
+
+    @Test
+    fun `localmake inside a block binds within the block and does not leak`() {
+        // to f repeat 3 [ localmake "z 5 print :z ] print :z end
+        //  0  3 5      12 14 16       25 27 29 31    37 39 41    47
+        val result = analyse("to f repeat 3 [ localmake \"z 5 print :z ] print :z end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals(37, ref.char) // in-block ":z"
+        assertEquals(TokenType.QUOTED_WORD, decl.type)
+        assertEquals(26, decl.char) // "z
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(48, d.char) // out-of-block ":z"
+    }
+
+    @Test
+    fun `variadic local inside a block binds every name and does not leak`() {
+        // to f repeat 3 [ (local "a "b) print :a print :b ] print :a end
+        val result = analyse("to f repeat 3 [ (local \"a \"b) print :a print :b ] print :a end")
+        val refs = result.symbolTable.varReferences
+        // In-block :a and :b both resolve; out-of-block :a is unbound (not in refs).
+        assertEquals(2, refs.size)
+        assertTrue(refs.values.all { it.type == TokenType.QUOTED_WORD })
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertTrue("a" in d.message) // the trailing out-of-block :a
+    }
+
+    @Test
+    fun `param shadowed by in-block make is restored after the block`() {
+        // to f :x repeat 3 [ print :x make "x 1 print :x ] print :x end
+        //  0  3 5  8       17 19    25 28   33 35 37    43 45 49    55  60
+        val result = analyse("to f :x repeat 3 [ print :x make \"x 1 print :x ] print :x end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(3, refs.size)
+
+        // First in-block :x → param at char 5
+        val first = refs.entries.single { it.key.char == 25 }
+        assertEquals(TokenType.VARIABLE, first.value.type)
+        assertEquals(5, first.value.char)
+
+        // Second in-block :x → "x at char 33
+        val second = refs.entries.single { it.key.char == 44 }
+        assertEquals(TokenType.QUOTED_WORD, second.value.type)
+        assertEquals(33, second.value.char)
+
+        // After-block :x → param at char 5 again (blockScope was discarded)
+        val third = refs.entries.single { it.key.char == 55 }
+        assertEquals(TokenType.VARIABLE, third.value.type)
+        assertEquals(5, third.value.char)
+
+        assertTrue(result.diagnostics.isEmpty())
+    }
 }

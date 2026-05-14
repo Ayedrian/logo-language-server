@@ -43,8 +43,7 @@ data class SymbolTableResult(val table: SymbolTable, val diagnostics: List<Diagn
  * bindings introduced by `make`, `local`, and `localmake` are added to the scope and seen by
  * subsequent refs. A procedure body's scope is seeded with its params; the top level starts empty.
  * Block expressions get a copy of the scope at entry, so in-block bindings don't leak out (refs
- * inside the block still see bindings introduced before it). Full slice-11 block-scope tracking
- * is a separate concern.
+ * inside the block still see bindings introduced before it, including bindings in enclosing blocks).
  *
  * Variable refs that don't resolve (whether in a body or at the top level) become WARNING diagnostics.
  * Note: this is a lexical approximation. LOGO uses dynamic scoping at runtime, so a :x ref inside a
@@ -122,8 +121,9 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
                     )
                 }
             }
-            // Refs inside a block see bindings introduced before the block; bindings introduced
-            // inside the block stay inside (copy-on-entry). Slice 11 revisits block visibility.
+            // Refs inside a block see bindings introduced before the block (in the enclosing
+            // scope, including outer blocks); bindings introduced inside the block stay inside
+            // via copy-on-entry. In-block statements walk in source order, mutating blockScope.
             is BlockExpressionNode -> {
                 val blockScope = scope.toMutableMap()
                 for (stmt in expr.statements) walkStatement(stmt, blockScope)

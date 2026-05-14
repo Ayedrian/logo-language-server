@@ -169,6 +169,20 @@ class SemanticTokensTest {
         )
     }
 
+    // ---- slice 11: block-level scope tracking ----
+
+    @Test
+    fun `in-block make highlights its name as STRING covering the leading quote`() {
+        // line 0: to f repeat 3 [ make "z 1 print :z ] end
+        //          0  3 5      12 14 16   21    26    32    38
+        val result = analyse("to f repeat 3 [ make \"z 1 print :z ] end")
+        val strings = collectSemanticTokens(result.ast).filter { it.kind == SemanticTokenKind.STRING }
+        assertEquals(1, strings.size)
+        assertEquals(0, strings[0].line)
+        assertEquals(21, strings[0].char) // position of '"'
+        assertEquals(2, strings[0].length) // '"z' = 2 chars
+    }
+
     @Test
     fun `nested procedure call emits FUNCTION token for inner call`() {
         // print sum 3 4 — both 'print' and 'sum' should be FUNCTION

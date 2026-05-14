@@ -192,4 +192,36 @@ class DeclarationTest {
         assertEquals(3, target.range.startChar)
         assertEquals(8, target.range.endChar) // 3 + "greet".length
     }
+
+    // ---- slice 11: block-level scope tracking ----
+
+    @Test
+    fun `go-to-declaration on variable ref inside a block jumps to in-block make declaration`() {
+        // line 0: to f repeat 3 [ make "z 1 print :z ] end
+        //          0  3 5      12 14 16   21 23 25   31    37
+        val source = "to f repeat 3 [ make \"z 1 print :z ] end"
+        val result = analyse(source)
+        // Cursor on the in-block ":z" at char 33 (the 'z' of size)
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 33)
+        assertNotNull(target)
+        // "z" declaration spans [21, 23) — char 21 is '"', char 22 is 'z'
+        assertEquals(0, target.range.line)
+        assertEquals(21, target.range.startChar)
+        assertEquals(23, target.range.endChar)
+    }
+
+    @Test
+    fun `go-to-declaration on variable ref in nested inner block jumps to outer-block make`() {
+        // line 0: to f repeat 3 [ make "z 1 repeat 2 [ print :z ] ] end
+        //          0  3 5      12 14 16   21 23 25      32 34 36    43 45 47
+        val source = "to f repeat 3 [ make \"z 1 repeat 2 [ print :z ] ] end"
+        val result = analyse(source)
+        // Cursor on the inner-block ":z" at char 44 (the 'z')
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 44)
+        assertNotNull(target)
+        // Outer-block "z" declaration spans [21, 23)
+        assertEquals(0, target.range.line)
+        assertEquals(21, target.range.startChar)
+        assertEquals(23, target.range.endChar)
+    }
 }
