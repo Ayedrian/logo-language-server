@@ -223,6 +223,103 @@ class ParserTest {
     }
 
     @Test
+    fun `comparison has lower precedence than additive`() {
+        // 1 + 2 < 3 + 4 → (< (+ 1 2) (+ 3 4))
+        val program = parse("print 1 + 2 < 3 + 4")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("<", outer.op.text)
+        val left = assertIs<BinaryOpNode>(outer.left)
+        assertEquals("+", left.op.text)
+        val right = assertIs<BinaryOpNode>(outer.right)
+        assertEquals("+", right.op.text)
+    }
+
+    @Test
+    fun `comparison is left-associative (no Python-style chaining)`() {
+        // 1 < 2 < 3 → (< (< 1 2) 3)
+        val program = parse("print 1 < 2 < 3")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("<", outer.op.text)
+        val inner = assertIs<BinaryOpNode>(outer.left)
+        assertEquals("<", inner.op.text)
+        assertEquals(3.0, assertIs<NumberNode>(outer.right).value)
+    }
+
+    @Test
+    fun `quoted word parses as WordLiteralNode in expression position`() {
+        val program = parse("print \"hello")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val word = assertIs<WordLiteralNode>(cmd.args[0])
+        assertEquals("hello", word.token.text)
+    }
+
+    @Test
+    fun `nested procedure call parses as CallExpressionNode`() {
+        // print sum 3 4 → print (sum 3 4)
+        val program = parse("print sum 3 4")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals("print", cmd.nameToken.text)
+        val call = assertIs<CallExpressionNode>(cmd.args[0])
+        assertEquals("sum", call.nameToken.text)
+        assertEquals(2, call.args.size)
+        assertEquals(3.0, assertIs<NumberNode>(call.args[0]).value)
+        assertEquals(4.0, assertIs<NumberNode>(call.args[1]).value)
+    }
+
+    @Test
+    fun `nested call's second arg consumes following arithmetic`() {
+        // print sum 1 2 + 3 → print (sum 1 (2+3))
+        val program = parse("print sum 1 2 + 3")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val call = assertIs<CallExpressionNode>(cmd.args[0])
+        assertEquals(1.0, assertIs<NumberNode>(call.args[0]).value)
+        val bin = assertIs<BinaryOpNode>(call.args[1])
+        assertEquals("+", bin.op.text)
+    }
+
+    @Test
+    fun `array literal parses with mixed numbers and words`() {
+        // print { 1 red 2 } — '1' and '2' are NumberNode, 'red' is WordLiteralNode (WORD)
+        val program = parse("print { 1 red 2 }")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val arr = assertIs<ArrayLiteralNode>(cmd.args[0])
+        assertEquals(3, arr.elements.size)
+        assertEquals(1.0, assertIs<NumberNode>(arr.elements[0]).value)
+        val word = assertIs<WordLiteralNode>(arr.elements[1])
+        assertEquals("red", word.token.text)
+        assertEquals(2.0, assertIs<NumberNode>(arr.elements[2]).value)
+    }
+
+    @Test
+    fun `nested array literal parses recursively`() {
+        // print { 1 { 2 3 } 4 }
+        val program = parse("print { 1 { 2 3 } 4 }")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val outer = assertIs<ArrayLiteralNode>(cmd.args[0])
+        assertEquals(3, outer.elements.size)
+        val inner = assertIs<ArrayLiteralNode>(outer.elements[1])
+        assertEquals(2, inner.elements.size)
+        assertEquals(2.0, assertIs<NumberNode>(inner.elements[0]).value)
+        assertEquals(3.0, assertIs<NumberNode>(inner.elements[1]).value)
+    }
+
+    @Test
+    fun `missing closing brace emits diagnostic and returns partial array`() {
+        val tokens = Lexer("print { 1 2").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val arr = assertIs<ArrayLiteralNode>(cmd.args[0])
+        assertEquals(2, arr.elements.size)
+        assertEquals(null, arr.rbrace)
+        val d = parser.diagnostics.single()
+        assertEquals(1, d.length) // spans the "{" token
+    }
+
+    @Test
     fun `missing closing paren emits diagnostic and recovers`() {
         val tokens = Lexer("print (1 + 2").tokenise()
         val scanner = FirstPassScanner(tokens).also { it.scan() }

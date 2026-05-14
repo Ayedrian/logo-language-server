@@ -60,3 +60,23 @@ data class UnaryOpNode(
     val op: Token,
     val operand: ExpressionNode,
 ) : ExpressionNode()
+
+// a procedure call appearing in expression position (e.g. "print sum 3 4" — sum is a value-producing call).
+// Mirrors CommandNode structurally; kept separate because CommandNode is a StatementNode.
+data class CallExpressionNode(
+    val nameToken: Token,
+    val args: List<ExpressionNode>,
+) : ExpressionNode()
+
+// a quoted-word literal "foo (token.type == QUOTED_WORD) or a bare word inside an array literal
+// (token.type == WORD). token.text excludes the leading '"' for QUOTED_WORD.
+data class WordLiteralNode(val token: Token) : ExpressionNode()
+
+// an array literal "{ <elements> }". Elements are NumberNode, WordLiteralNode, or nested ArrayLiteralNode.
+// Arrays hold literal data only — they carry no scope and contain no variable refs or calls.
+// rbrace is null if '}' was missing.
+data class ArrayLiteralNode(
+    val lbrace: Token,
+    val elements: List<ExpressionNode>,
+    val rbrace: Token?,
+) : ExpressionNode()

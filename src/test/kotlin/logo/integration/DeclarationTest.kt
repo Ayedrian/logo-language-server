@@ -104,6 +104,36 @@ class DeclarationTest {
     }
 
     @Test
+    fun `go-to-declaration on nested call name jumps to its definition`() {
+        // line 0: to greet :n print :n end
+        // line 1: print greet 1
+        val source = "to greet :n print :n end\nprint greet 1"
+        val result = analyse(source)
+        // Cursor on "greet" in nested call on line 1, char 8 ("gr^eet")
+        val target = findDeclaration(result.ast, result.symbolTable, line = 1, char = 8)
+        assertNotNull(target)
+        // "greet" in "to greet :n" starts at line 0, char 3
+        assertEquals(0, target.range.line)
+        assertEquals(3, target.range.startChar)
+        assertEquals(8, target.range.endChar) // 3 + "greet".length
+    }
+
+    @Test
+    fun `go-to-declaration on variable ref inside comparison jumps to param`() {
+        // line 0: to f :x if :x < 10 [ fd :x ] end
+        //          0  3 5  8  11 14 16 18 20 23   29
+        val source = "to f :x if :x < 10 [ fd :x ] end"
+        val result = analyse(source)
+        // Cursor on ":x" inside the comparison at char 12 (the 'x')
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 12)
+        assertNotNull(target)
+        // Header ":x" spans columns [5, 7)
+        assertEquals(0, target.range.line)
+        assertEquals(5, target.range.startChar)
+        assertEquals(7, target.range.endChar)
+    }
+
+    @Test
     fun `go-to-declaration on variable ref inside arithmetic jumps to param`() {
         // line 0: to f :x fd :x + 1 end
         //          0  3 5  8  11 14 16 18

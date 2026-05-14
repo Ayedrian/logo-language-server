@@ -104,4 +104,52 @@ class SemanticTokensTest {
         val params = collectSemanticTokens(result.ast).filter { it.kind == SemanticTokenKind.PARAMETER }
         assertEquals(2, params.size) // header :x and body :x
     }
+
+    @Test
+    fun `quoted word emits STRING token covering leading quote`() {
+        // line 0: print "hello
+        //          0     6
+        val result = analyse("print \"hello")
+        val strings = collectSemanticTokens(result.ast).filter { it.kind == SemanticTokenKind.STRING }
+        assertEquals(1, strings.size)
+        assertEquals(0, strings[0].line)
+        assertEquals(6, strings[0].char) // position of '"'
+        assertEquals(6, strings[0].length) // '"hello' = 6 chars
+    }
+
+    @Test
+    fun `array literal emits ARRAY tokens for braces and bare words and NUMBER for digits`() {
+        // line 0: print { 1 red 2 }
+        //          0     6 8 10 14 16
+        val result = analyse("print { 1 red 2 }")
+        val toks = collectSemanticTokens(result.ast)
+        // Expect: FUNCTION print, ARRAY '{', NUMBER 1, ARRAY 'red', NUMBER 2, ARRAY '}'
+        assertEquals(
+            listOf(
+                SemanticTokenKind.FUNCTION,
+                SemanticTokenKind.ARRAY,
+                SemanticTokenKind.NUMBER,
+                SemanticTokenKind.ARRAY,
+                SemanticTokenKind.NUMBER,
+                SemanticTokenKind.ARRAY,
+            ),
+            toks.map { it.kind },
+        )
+    }
+
+    @Test
+    fun `nested procedure call emits FUNCTION token for inner call`() {
+        // print sum 3 4 — both 'print' and 'sum' should be FUNCTION
+        val result = analyse("print sum 3 4")
+        val toks = collectSemanticTokens(result.ast)
+        assertEquals(
+            listOf(
+                SemanticTokenKind.FUNCTION, // print
+                SemanticTokenKind.FUNCTION, // sum
+                SemanticTokenKind.NUMBER,   // 3
+                SemanticTokenKind.NUMBER,   // 4
+            ),
+            toks.map { it.kind },
+        )
+    }
 }

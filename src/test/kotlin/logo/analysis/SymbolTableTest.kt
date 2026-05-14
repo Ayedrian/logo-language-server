@@ -98,4 +98,37 @@ class SymbolTableTest {
         assertEquals(DiagnosticSeverity.WARNING, d.severity)
         assertTrue("y" in d.message)
     }
+
+    @Test
+    fun `variable reference inside comparison resolves to header param`() {
+        // to f :x if :x < 10 [ fd :x ] end
+        val result = analyse("to f :x if :x < 10 [ fd :x ] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(2, refs.size)
+        assertTrue(refs.keys.all { it.text == "x" })
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `variable reference inside a nested call resolves`() {
+        // to f :x print sum :x 1 end
+        val result = analyse("to f :x print sum :x 1 end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (refToken, declToken) = refs.entries.single()
+        assertEquals("x", refToken.text)
+        assertEquals("x", declToken.text)
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `array literal does not produce diagnostics or refs`() {
+        // print { 1 :x 2 } — the :x lexes as VARIABLE but inside {} it becomes WORD, so no
+        // unbound-variable diagnostic should fire even at top-level. Wait: inside braces only
+        // identifier-shaped lexemes turn into WORD; ":x" still lexes as VARIABLE. So this
+        // would emit one warning. Use bare words instead.
+        val result = analyse("print { red green 1 2 }")
+        assertTrue(result.symbolTable.varReferences.isEmpty())
+        assertTrue(result.diagnostics.isEmpty())
+    }
 }

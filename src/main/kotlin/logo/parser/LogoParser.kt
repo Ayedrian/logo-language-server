@@ -75,22 +75,48 @@ class LogoParser(
      */
     private fun parseCommand(): CommandNode {
         val nameToken = consume()
+        return CommandNode(nameToken, parseCallArgs(nameToken))
+    }
+
+    /**
+     * Reads the arity-many argument expressions following a call's name token. Shared by
+     * parseCommand (statement context) and parsePrimary (expression context — "print sum 3 4").
+     * Arity is looked up via the merged built-in + user-defined arity table; unknown names
+     * default to 0 args.
+     */
+    private fun parseCallArgs(nameToken: Token): List<ExpressionNode> {
         val arity = arities[nameToken.text] ?: 0
         val args = mutableListOf<ExpressionNode>()
         repeat(arity) {
             if (!isAtEnd()) parseExpression()?.let { args += it }
         }
-        return CommandNode(nameToken, args)
+        return args
     }
 
     /**
      * Expression entry point. Implemented as a precedence-climbing recursive descent:
-     *   additive ( + - )  →  multiplicative ( * / )  →  unary ( prefix - )  →  primary
-     * Both binary levels are left-associative. Block expressions [ ... ] only appear at
-     * primary level (they can't combine with arithmetic). Parens '(' expr ')' are
-     * transparent — no ParenExpressionNode, the inner expression is returned directly.
+     *   comparison ( < > = <= >= <> )  →  additive ( + - )  →  multiplicative ( * / )
+     *     →  unary ( prefix - )  →  primary
+     * All binary levels are left-associative; comparisons do not chain Python-style (a < b < c
+     * parses as (a < b) < c, the same as additive). Block expressions [ ... ] and array
+     * literals { ... } only appear at primary level. Parens '(' expr ')' are transparent —
+     * no ParenExpressionNode, the inner expression is returned directly.
      */
-    private fun parseExpression(): ExpressionNode? = parseAdditive()
+    private fun parseExpression(): ExpressionNode? = parseComparison()
+
+    private fun parseComparison(): ExpressionNode? {
+        var left = parseAdditive() ?: return null
+        while (!isAtEnd() && isComparisonOp(current().type)) {
+            val op = consume()
+            val right = parseAdditive() ?: return left
+            left = BinaryOpNode(op, left, right)
+        }
+        return left
+    }
+
+    private fun isComparisonOp(t: TokenType): Boolean =
+        t == TokenType.LT || t == TokenType.GT || t == TokenType.EQ ||
+            t == TokenType.LEQ || t == TokenType.GEQ || t == TokenType.NEQ
 
     private fun parseAdditive(): ExpressionNode? {
         var left = parseMultiplicative() ?: return null
@@ -132,7 +158,19 @@ class LogoParser(
                 consume()
                 VariableRefNode(tok)
             }
+            TokenType.QUOTED_WORD -> {
+                consume()
+                WordLiteralNode(tok)
+            }
+            // a bare IDENTIFIER in expression position is a value-producing procedure call.
+            // Arity comes from the same table parseCommand uses, so "print sum 3 4" parses as
+            // print (sum 3 4). Unknown names default to arity 0.
+            TokenType.IDENTIFIER -> {
+                val nameToken = consume()
+                CallExpressionNode(nameToken, parseCallArgs(nameToken))
+            }
             TokenType.LBRACKET -> parseBlock()
+            TokenType.LBRACE -> parseArrayLiteral()
             TokenType.LPAREN -> parseParenExpression()
             else -> {
                 // EOF has empty text; use length 1 so the LSP range is well-formed
@@ -141,6 +179,34 @@ class LogoParser(
                 null
             }
         }
+    }
+
+    /**
+     * Parses "{ <element>* }" as an array literal. Elements are NUMBER, WORD, or nested
+     * array literals — instruction lists are not allowed inside arrays (arrays hold data,
+     * not code). Unrecognised tokens inside an array are skipped silently for now.
+     * On missing "}" (EOF reached), emits a diagnostic spanning the opening "{" and returns
+     * a partial array with rbrace = null.
+     */
+    private fun parseArrayLiteral(): ArrayLiteralNode {
+        val lbrace = consume() // "{"
+        val elements = mutableListOf<ExpressionNode>()
+        while (!isAtEnd() && current().type != TokenType.RBRACE) {
+            val tok = current()
+            when (tok.type) {
+                TokenType.NUMBER -> { consume(); elements += NumberNode(tok.text.toDouble(), tok) }
+                TokenType.WORD -> { consume(); elements += WordLiteralNode(tok) }
+                TokenType.LBRACE -> elements += parseArrayLiteral()
+                else -> pos++ // skip unrecognised token; arrays are permissive
+            }
+        }
+        val rbrace = if (isAtEnd()) {
+            diagnostics += Diagnostic("Expected '}' to close array", lbrace.line, lbrace.char, lbrace.text.length)
+            null
+        } else {
+            consume()
+        }
+        return ArrayLiteralNode(lbrace, elements, rbrace)
     }
 
     /**

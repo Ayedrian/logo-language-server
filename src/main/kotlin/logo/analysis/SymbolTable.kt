@@ -3,8 +3,10 @@ package logo.analysis
 import logo.diagnostics.Diagnostic
 import logo.diagnostics.DiagnosticSeverity
 import logo.lexer.Token
+import logo.parser.ArrayLiteralNode
 import logo.parser.BinaryOpNode
 import logo.parser.BlockExpressionNode
+import logo.parser.CallExpressionNode
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
 import logo.parser.ProcedureDefNode
@@ -12,6 +14,7 @@ import logo.parser.ProgramNode
 import logo.parser.StatementNode
 import logo.parser.UnaryOpNode
 import logo.parser.VariableRefNode
+import logo.parser.WordLiteralNode
 
 /**
  * Symbol table populated by walking the AST after parsing
@@ -84,6 +87,10 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
             is BlockExpressionNode -> for (stmt in expr.statements) walkStatement(stmt, params)
             is BinaryOpNode -> { walkExpression(expr.left, params); walkExpression(expr.right, params) }
             is UnaryOpNode -> walkExpression(expr.operand, params)
+            // nested calls in expression context (e.g. "print sum :x 1") — recurse into args
+            is CallExpressionNode -> for (arg in expr.args) walkExpression(arg, params)
+            // word literals and array literals carry no variable refs; arrays hold only literal data
+            is WordLiteralNode, is ArrayLiteralNode -> Unit
             else -> Unit
         }
     }

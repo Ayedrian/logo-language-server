@@ -3,9 +3,11 @@ package logo.features
 import logo.analysis.SymbolTable
 import logo.lexer.Token
 import logo.lexer.TokenType
+import logo.parser.ArrayLiteralNode
 import logo.parser.AstNode
 import logo.parser.BinaryOpNode
 import logo.parser.BlockExpressionNode
+import logo.parser.CallExpressionNode
 import logo.parser.CommandNode
 import logo.parser.ExpressionNode
 import logo.parser.ProcedureDefNode
@@ -40,6 +42,8 @@ fun findDeclaration(ast: ProgramNode, symbolTable: SymbolTable, line: Int, char:
 
     return when (val node = findNodeAt(ast.statements, line, char)) {
         is CommandNode -> symbolTable.proceduresByName[node.nameToken.text]
+            ?.let { DeclarationTarget(it.nameToken.toRange()) }
+        is CallExpressionNode -> symbolTable.proceduresByName[node.nameToken.text]
             ?.let { DeclarationTarget(it.nameToken.toRange()) }
         is VariableRefNode -> symbolTable.varReferences[node.token]
             ?.let { DeclarationTarget(it.toRange()) }
@@ -79,6 +83,11 @@ private fun findInExpression(expr: ExpressionNode, line: Int, char: Int): AstNod
         is BlockExpressionNode -> findNodeAt(expr.statements, line, char)
         is BinaryOpNode -> findInExpression(expr.left, line, char) ?: findInExpression(expr.right, line, char)
         is UnaryOpNode -> findInExpression(expr.operand, line, char)
+        is CallExpressionNode -> {
+            if (expr.nameToken.contains(line, char)) expr
+            else expr.args.firstNotNullOfOrNull { findInExpression(it, line, char) }
+        }
+        // word and array literals are leaves for navigation purposes — nothing to jump to
         else -> null
     }
 }
