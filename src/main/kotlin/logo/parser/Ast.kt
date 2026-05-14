@@ -16,12 +16,13 @@ data class CommandNode(
     val args: List<ExpressionNode>,
 ) : StatementNode()
 
-// a user-defined procedure: "to <name> :p1 :p2 ... <body> end"
+// a user-defined procedure or macro: "to <name> :p1 :p2 ... <body> end" or ".macro <name> ... end"
 // nameToken is the procedure name (for go-to-declaration), parameters are VARIABLE tokens,
 // body is the list of statements between the parameter list and "end" keyword
-// toToken and endToken are kept for semantic-token highlighting, endToken is null if "end" was missing
+// defToken holds the introducing keyword ("to" or ".macro") for semantic-token highlighting,
+// endToken is null if "end" was missing
 data class ProcedureDefNode(
-    val toToken: Token,
+    val defToken: Token,
     val nameToken: Token, // will be used for go-to-declaration
     val params: List<Token>,
     val body: List<StatementNode>,

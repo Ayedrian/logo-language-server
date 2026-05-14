@@ -138,6 +138,38 @@ class SemanticTokensTest {
     }
 
     @Test
+    fun `macro definition emits KEYWORD for the macro keyword and FUNCTION for name`() {
+        // line 0: .macro greet :n print :n end
+        //          0     7     13 16    22 25
+        val result = analyse(".macro greet :n print :n end")
+        val toks = collectSemanticTokens(result.ast)
+        // First token: '.macro' keyword spanning 6 chars at char 0
+        assertEquals(SemanticTokenKind.KEYWORD, toks[0].kind)
+        assertEquals(0, toks[0].char)
+        assertEquals(6, toks[0].length)
+        // Second token: 'greet' name, FUNCTION
+        assertEquals(SemanticTokenKind.FUNCTION, toks[1].kind)
+        assertEquals(7, toks[1].char)
+        assertEquals(5, toks[1].length)
+    }
+
+    @Test
+    fun `variadic call name still emits FUNCTION token`() {
+        // (print 1 2 3) — print should highlight as FUNCTION, parens emit nothing
+        val result = analyse("(print 1 2 3)")
+        val toks = collectSemanticTokens(result.ast)
+        assertEquals(
+            listOf(
+                SemanticTokenKind.FUNCTION, // print
+                SemanticTokenKind.NUMBER,   // 1
+                SemanticTokenKind.NUMBER,   // 2
+                SemanticTokenKind.NUMBER,   // 3
+            ),
+            toks.map { it.kind },
+        )
+    }
+
+    @Test
     fun `nested procedure call emits FUNCTION token for inner call`() {
         // print sum 3 4 — both 'print' and 'sum' should be FUNCTION
         val result = analyse("print sum 3 4")

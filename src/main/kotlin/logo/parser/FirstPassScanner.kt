@@ -4,9 +4,10 @@ import logo.lexer.Token
 import logo.lexer.TokenType
 
 /**
- * First parser pass: Scans for "to <name> [:<param> ...]" blocks and stores each
- * procedure's arity (how many parameters it takes) so that the recursive descent parser
- * knows how many arguments to consume at every call site (in the second pass)
+ * First parser pass: Scans for "to <name> [:<param> ...]" and ".macro <name> [:<param> ...]"
+ * blocks and stores each procedure/macro's arity (how many parameters it takes) so that
+ * the recursive descent parser knows how many arguments to consume at every call site
+ * (in the second pass)
  */
 class FirstPassScanner(private val tokens: List<Token>) {
     // procedure name (lowercase) → arity
@@ -16,7 +17,7 @@ class FirstPassScanner(private val tokens: List<Token>) {
 
     fun scan() {
         while (position < tokens.size) {
-            if (current().type == TokenType.KEYWORD && current().text == "to") {
+            if (current().type == TokenType.KEYWORD && (current().text == "to" || current().text == ".macro")) {
                 scanProcedure()
             } else {
                 position++
@@ -25,7 +26,7 @@ class FirstPassScanner(private val tokens: List<Token>) {
     }
 
     private fun scanProcedure() {
-        position++ // consumes the "to" keyword
+        position++ // consumes the "to" or ".macro" keyword
         if (position >= tokens.size || current().type != TokenType.IDENTIFIER) return
         val name = current().text
         position++ // consume procedure name

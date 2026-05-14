@@ -49,8 +49,8 @@ private fun visitStatement(node: AstNode, out: MutableList<RawSemanticToken>) {
             for (arg in node.args) visitExpression(arg, out)
         }
         is ProcedureDefNode -> {
-            val to = node.toToken
-            out += RawSemanticToken(to.line, to.char, to.text.length, SemanticTokenKind.KEYWORD)
+            val def = node.defToken
+            out += RawSemanticToken(def.line, def.char, def.text.length, SemanticTokenKind.KEYWORD)
             val name = node.nameToken
             out += RawSemanticToken(name.line, name.char, name.text.length, SemanticTokenKind.FUNCTION)
             for (param in node.params) {

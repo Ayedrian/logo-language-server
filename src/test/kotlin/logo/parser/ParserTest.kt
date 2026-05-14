@@ -332,4 +332,66 @@ class ParserTest {
         val d = parser.diagnostics.single()
         assertEquals(1, d.length) // spans the "(" token
     }
+
+    @Test
+    fun `parses macro definition`() {
+        val program = parse(".macro greet :who print :who end")
+        val def = assertIs<ProcedureDefNode>(program.statements[0])
+        assertEquals(".macro", def.defToken.text)
+        assertEquals("greet", def.nameToken.text)
+        assertEquals(1, def.params.size)
+        assertEquals("who", def.params[0].text)
+        assertEquals(1, def.body.size)
+    }
+
+    @Test
+    fun `variadic expression call overrides arity table`() {
+        // sum's table arity is 2; the variadic form takes 4 args
+        val program = parse("print (sum 1 2 3 4)")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val call = assertIs<CallExpressionNode>(cmd.args[0])
+        assertEquals("sum", call.nameToken.text)
+        assertEquals(4, call.args.size)
+        assertEquals(1.0, assertIs<NumberNode>(call.args[0]).value)
+        assertEquals(4.0, assertIs<NumberNode>(call.args[3]).value)
+    }
+
+    @Test
+    fun `variadic statement call parses as CommandNode`() {
+        // print's table arity is 1; the variadic form takes 3 args
+        val program = parse("(print 1 2 3)")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals("print", cmd.nameToken.text)
+        assertEquals(3, cmd.args.size)
+    }
+
+    @Test
+    fun `variadic call with zero args parses`() {
+        // fd's table arity is 1; (fd) overrides to 0 args
+        val program = parse("(fd)")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals("fd", cmd.nameToken.text)
+        assertEquals(0, cmd.args.size)
+    }
+
+    @Test
+    fun `grouping still works when first token after paren is not IDENTIFIER`() {
+        // Regression: (1 + 2) must still parse as grouping, not as variadic call
+        val program = parse("print (1 + 2)")
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        val bin = assertIs<BinaryOpNode>(cmd.args[0])
+        assertEquals("+", bin.op.text)
+    }
+
+    @Test
+    fun `missing closing paren in variadic call emits diagnostic`() {
+        val tokens = Lexer("(print 1 2 3").tokenise()
+        val scanner = FirstPassScanner(tokens).also { it.scan() }
+        val parser = LogoParser(tokens, BUILTIN_ARITIES + scanner.procedures)
+        val program = parser.parse()
+        val cmd = assertIs<CommandNode>(program.statements[0])
+        assertEquals(3, cmd.args.size)
+        val d = parser.diagnostics.single()
+        assertEquals(1, d.length) // spans the "(" token
+    }
 }

@@ -122,6 +122,25 @@ class SymbolTableTest {
     }
 
     @Test
+    fun `macro is registered alongside procedures`() {
+        // .macro defines a callable just like 'to'; the symbol table should expose it the same way
+        val result = analyse(".macro greet :n print :n end")
+        val def = result.symbolTable.proceduresByName["greet"]
+        assertEquals("greet", def?.nameToken?.text)
+        assertEquals(".macro", def?.defToken?.text)
+        assertEquals(1, def?.params?.size)
+    }
+
+    @Test
+    fun `variadic call args are walked for unbound variables`() {
+        // (print :foo) — the variadic statement call still walks its args for unbound refs
+        val result = analyse("(print :foo)")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertTrue("foo" in d.message)
+    }
+
+    @Test
     fun `array literal does not produce diagnostics or refs`() {
         // print { 1 :x 2 } — the :x lexes as VARIABLE but inside {} it becomes WORD, so no
         // unbound-variable diagnostic should fire even at top-level. Wait: inside braces only

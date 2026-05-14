@@ -147,4 +147,34 @@ class DeclarationTest {
         assertEquals(5, target.range.startChar)
         assertEquals(7, target.range.endChar)
     }
+
+    @Test
+    fun `go-to-declaration on macro call jumps to macro header`() {
+        // line 0: .macro greet :n print :n end
+        // line 1: greet 1
+        val source = ".macro greet :n print :n end\ngreet 1"
+        val result = analyse(source)
+        // Cursor on "greet" call on line 1, char 2
+        val target = findDeclaration(result.ast, result.symbolTable, line = 1, char = 2)
+        assertNotNull(target)
+        // "greet" in ".macro greet :n" starts at line 0, char 7
+        assertEquals(0, target.range.line)
+        assertEquals(7, target.range.startChar)
+        assertEquals(12, target.range.endChar) // 7 + "greet".length
+    }
+
+    @Test
+    fun `go-to-declaration on variadic call name jumps to its definition`() {
+        // line 0: to greet :n print :n end
+        // line 1: (greet 1)
+        val source = "to greet :n print :n end\n(greet 1)"
+        val result = analyse(source)
+        // Cursor on "greet" inside the variadic statement call on line 1, char 3
+        val target = findDeclaration(result.ast, result.symbolTable, line = 1, char = 3)
+        assertNotNull(target)
+        // "greet" in "to greet :n" starts at line 0, char 3
+        assertEquals(0, target.range.line)
+        assertEquals(3, target.range.startChar)
+        assertEquals(8, target.range.endChar) // 3 + "greet".length
+    }
 }

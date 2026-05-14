@@ -26,13 +26,15 @@ class LogoParser(
     }
 
     /**
-     * A statement is either a procedure definition ("to ... end") or a procedure call.
+     * A statement is a procedure/macro definition ("to ... end" or ".macro ... end"),
+     * a procedure call, or a variadic statement call "( name args* )".
      */
     private fun parseStatement(): StatementNode? {
         val tok = current()
         return when {
-            tok.type == TokenType.KEYWORD && tok.text == "to" -> parseProcedureDef()
+            tok.type == TokenType.KEYWORD && (tok.text == "to" || tok.text == ".macro") -> parseProcedureDef()
             tok.type == TokenType.IDENTIFIER -> parseCommand()
+            tok.type == TokenType.LPAREN && peek(1)?.type == TokenType.IDENTIFIER -> parseVariadicStatement()
             else -> { pos++; null } // skip anything we don't handle yet
         }
     }
@@ -44,10 +46,10 @@ class LogoParser(
      * emit a diagnostic, and still return the partial definition
      */
     private fun parseProcedureDef(): ProcedureDefNode {
-        val toToken = consume() // "to"
+        val defToken = consume() // "to" or ".macro"
         if (isAtEnd() || current().type != TokenType.IDENTIFIER) {
-            diagnostics += Diagnostic("Expected procedure name after 'to'", toToken.line, toToken.char, toToken.text.length)
-            return ProcedureDefNode(toToken, toToken, emptyList(), emptyList(), null)
+            diagnostics += Diagnostic("Expected procedure name after '${defToken.text}'", defToken.line, defToken.char, defToken.text.length)
+            return ProcedureDefNode(defToken, defToken, emptyList(), emptyList(), null)
         }
         val nameToken = consume()
 
@@ -67,7 +69,7 @@ class LogoParser(
         } else {
             consume()
         }
-        return ProcedureDefNode(toToken, nameToken, params, body, endToken)
+        return ProcedureDefNode(defToken, nameToken, params, body, endToken)
     }
 
     /**
@@ -210,12 +212,18 @@ class LogoParser(
     }
 
     /**
-     * Parses '( expr )'. Parens are transparent — the inner expression is returned directly.
-     * On missing ')' (EOF reached), emits a diagnostic spanning the opening '(' and returns
-     * the partial inner expression. Variadic call form ( name args* ) is deferred to slice 9.
+     * Parses either a variadic call '( name args* )' or a grouping '( expr )'. If the token
+     * following '(' is an IDENTIFIER, it is the variadic call form — arg count is determined
+     * by how many expressions appear before ')', overriding the arity table. Otherwise the
+     * parens are transparent and the inner expression is returned directly. On missing ')'
+     * (EOF reached), emits a diagnostic spanning the opening '(' and returns the partial node.
      */
     private fun parseParenExpression(): ExpressionNode? {
         val lparen = consume() // "("
+        if (!isAtEnd() && current().type == TokenType.IDENTIFIER) {
+            val nameToken = consume()
+            return CallExpressionNode(nameToken, parseVariadicCallTail(lparen))
+        }
         val inner = parseExpression()
         if (isAtEnd() || current().type != TokenType.RPAREN) {
             diagnostics += Diagnostic("Expected ')' to close expression", lparen.line, lparen.char, lparen.text.length)
@@ -223,6 +231,38 @@ class LogoParser(
             consume() // ")"
         }
         return inner
+    }
+
+    /**
+     * Parses '( name args* )' at statement position, producing a CommandNode. Precondition:
+     * current is LPAREN and the token after it is IDENTIFIER (checked by parseStatement).
+     */
+    private fun parseVariadicStatement(): CommandNode {
+        val lparen = consume() // "("
+        val nameToken = consume() // IDENTIFIER
+        return CommandNode(nameToken, parseVariadicCallTail(lparen))
+    }
+
+    /**
+     * Reads zero or more expression arguments until ')' or EOF, then consumes the ')'.
+     * Shared by the expression and statement variadic call forms. On missing ')', emits a
+     * diagnostic spanning the opening '('. If parseExpression returns null on an unrecognised
+     * token (e.g. a stray operator), advance one token to avoid an infinite loop — the
+     * "Expected expression" diagnostic was already emitted by parsePrimary.
+     */
+    private fun parseVariadicCallTail(lparen: Token): List<ExpressionNode> {
+        val args = mutableListOf<ExpressionNode>()
+        while (!isAtEnd() && current().type != TokenType.RPAREN) {
+            val before = pos
+            parseExpression()?.let { args += it }
+            if (pos == before) pos++
+        }
+        if (isAtEnd()) {
+            diagnostics += Diagnostic("Expected ')' to close expression", lparen.line, lparen.char, lparen.text.length)
+        } else {
+            consume() // ")"
+        }
+        return args
     }
 
     /**
@@ -255,5 +295,6 @@ class LogoParser(
 
     private fun consume(): Token = tokens[pos++]
     private fun current(): Token = tokens[pos]
+    private fun peek(offset: Int): Token? = tokens.getOrNull(pos + offset)
     private fun isAtEnd(): Boolean = tokens[pos].type == TokenType.EOF
 }
