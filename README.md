@@ -6,6 +6,12 @@ Supports:
 - Syntax highlighting via semantic tokens
 - Go-to-declaration for procedures and variable references
 - Unused variable warnings
+- Simple hover documentation for procedures, parameters and variables
+
+Does NOT support (although I would've loved to work on these and might do so in the future):
+- Variable renaming (athough partial support exists via NodeAtCursor walker and in SymbolTable)
+- Simple code completion
+- Many more LSP features of course
 
 ## Requirements
 

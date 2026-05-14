@@ -6,6 +6,7 @@ import logo.features.SemanticTokenKind
 import logo.features.collectSemanticTokens
 import logo.features.encodeSemanticTokens
 import logo.features.findDeclaration
+import logo.features.findHover
 import org.eclipse.lsp4j.*
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 import org.eclipse.lsp4j.services.*
@@ -67,6 +68,14 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
             } else mutableListOf()
             return CompletableFuture.completedFuture(Either.forLeft(locations))
         }
+
+        override fun hover(params: HoverParams): CompletableFuture<Hover?> {
+            val result = cache[params.textDocument.uri]
+            val pos = params.position
+            val hoverResult = result?.let { findHover(it.ast, it.symbolTable, pos.line, pos.character) }
+            val hover = hoverResult?.let { Hover(MarkupContent(MarkupKind.MARKDOWN, it.markdown)) }
+            return CompletableFuture.completedFuture(hover)
+        }
     }
 
     /**
@@ -85,6 +94,7 @@ class LogoLanguageServer : LanguageServer, LanguageClientAware {
         val capabilities = ServerCapabilities().apply {
             semanticTokensProvider = SemanticTokensWithRegistrationOptions(legend, SemanticTokensServerFull(false))
             declarationProvider = Either.forLeft(true)
+            hoverProvider = Either.forLeft(true)
             textDocumentSync = Either.forLeft(TextDocumentSyncKind.Full)
         }
         return CompletableFuture.completedFuture(InitializeResult(capabilities))
