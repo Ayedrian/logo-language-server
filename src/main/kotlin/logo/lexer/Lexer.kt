@@ -71,6 +71,8 @@ class Lexer(private val sourceCode: String) {
             char == '=' -> { advance(); Token(TokenType.EQ, "=", startLine, startColumn) }
             char == '<' -> readLessThan(startLine, startColumn)
             char == '>' -> readGreaterThan(startLine, startColumn)
+            // '`' is UCBLogo's backquote macro reader — a one-char procedure name
+            char == '`' -> { advance(); Token(TokenType.IDENTIFIER, "`", startLine, startColumn) }
             else -> { advance(); Token(TokenType.UNKNOWN, char.toString(), startLine, startColumn) }
         }
     }

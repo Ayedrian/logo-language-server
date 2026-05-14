@@ -191,4 +191,15 @@ class LexerTest {
         assertEquals(1, tokens[2].line) // second print
         assertEquals(0, tokens[2].char)
     }
+
+    @Test
+    fun `backtick lexes as IDENTIFIER`() {
+        // UCBLogo's backquote macro reader is a one-char procedure name.
+        val tokens = Lexer("` foo").tokenise()
+        assertEquals(TokenType.IDENTIFIER, tokens[0].type)
+        assertEquals("`", tokens[0].text)
+        assertEquals(0, tokens[0].char)
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("foo", tokens[1].text)
+    }
 }

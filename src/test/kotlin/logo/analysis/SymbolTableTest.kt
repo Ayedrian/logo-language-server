@@ -191,12 +191,12 @@ class SymbolTableTest {
     fun `variable reference before its make is unbound`() {
         // to f print :x make "x 5 end
         //  0  3 5     11 14    19    24
+        // Slice 12 note: ":x" before the make has no lexical decl (still asserted via
+        // empty varReferences), but the name "x" IS bound elsewhere in the file (by the
+        // later make), so the dynamic-scoping fallback silences the warning.
         val result = analyse("to f print :x make \"x 5 end")
         assertTrue(result.symbolTable.varReferences.isEmpty())
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(11, d.char)
-        assertTrue("x" in d.message)
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
@@ -224,6 +224,9 @@ class SymbolTableTest {
     fun `make inside a block does not leak out`() {
         // to f repeat 3 [ make "z 10 print :z ] print :z end
         //  0  3 5      14 16    21 24 27    33   38    44 47
+        // Slice 12 note: out-of-block ":z" doesn't lexically resolve (asserted via the
+        // refs.size == 1), but "z" is bound in-block, so the dynamic-scoping fallback
+        // silences the warning that older slices would have emitted.
         val result = analyse("to f repeat 3 [ make \"z 10 print :z ] print :z end")
 
         val refs = result.symbolTable.varReferences
@@ -231,10 +234,7 @@ class SymbolTableTest {
         val (ref, decl) = refs.entries.single()
         assertEquals(33, ref.char) // in-block :z
         assertEquals(21, decl.char) // "z
-
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(44, d.char) // out-of-block :z
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
@@ -291,30 +291,33 @@ class SymbolTableTest {
     fun `binding inside inner block does not leak to outer block`() {
         // to f repeat 3 [ repeat 2 [ make "z 1 ] print :z ] end
         //  0  3 5      12 14 16     23 25    32 34    39 45 47 49
+        // Slice 12 note: outer ":z" doesn't lexically resolve (refs is empty), but "z"
+        // is bound in the inner block, so the dynamic-scoping fallback silences the
+        // warning that older slices would have emitted.
         val result = analyse("to f repeat 3 [ repeat 2 [ make \"z 1 ] print :z ] end")
         assertTrue(result.symbolTable.varReferences.isEmpty())
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(45, d.char) // outer block's ":z" colon position
-        assertTrue("z" in d.message)
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
     fun `sibling blocks in ifelse do not share bindings`() {
         // to f ifelse 1 [ make "z 1 ] [ print :z ] end
         //  0  3 5      12 14 16   21 26 28 30   36
+        // Slice 12 note: ":z" in the else-arm doesn't lexically resolve (refs empty),
+        // but "z" is bound in the then-arm, so the dynamic-scoping fallback silences
+        // the warning that older slices would have emitted.
         val result = analyse("to f ifelse 1 [ make \"z 1 ] [ print :z ] end")
         assertTrue(result.symbolTable.varReferences.isEmpty())
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(36, d.char) // ":z" in the else-arm
-        assertTrue("z" in d.message)
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
     fun `in-block ordering — ref before make is unbound, ref after resolves`() {
         // to f repeat 3 [ print :z make "z 1 print :z ] end
         //  0  3 5      12 14 16    22 25   30 32 34 36    42 44 46
+        // Slice 12 note: first ":z" doesn't lexically resolve (refs has only the
+        // second), but "z" is bound by the same-block make, so the dynamic-scoping
+        // fallback silences the warning older slices would have emitted on the first.
         val result = analyse("to f repeat 3 [ print :z make \"z 1 print :z ] end")
         val refs = result.symbolTable.varReferences
         assertEquals(1, refs.size)
@@ -322,16 +325,15 @@ class SymbolTableTest {
         assertEquals(41, ref.char) // second ":z" — after the make
         assertEquals(TokenType.QUOTED_WORD, decl.type)
         assertEquals(30, decl.char) // "z
-
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(22, d.char) // first ":z" — before the make
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
     fun `local inside a block binds within the block and does not leak`() {
         // to f repeat 3 [ local "z print :z ] print :z end
         //  0  3 5      12 14 16   22 25   31    36 38    44
+        // Slice 12 note: out-of-block ":z" doesn't lexically resolve; "z" is bound in
+        // the block, so the dynamic-scoping fallback silences the warning.
         val result = analyse("to f repeat 3 [ local \"z print :z ] print :z end")
         val refs = result.symbolTable.varReferences
         assertEquals(1, refs.size)
@@ -339,16 +341,15 @@ class SymbolTableTest {
         assertEquals(31, ref.char) // in-block ":z"
         assertEquals(TokenType.QUOTED_WORD, decl.type)
         assertEquals(22, decl.char) // "z
-
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(42, d.char) // out-of-block ":z"
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
     fun `localmake inside a block binds within the block and does not leak`() {
         // to f repeat 3 [ localmake "z 5 print :z ] print :z end
         //  0  3 5      12 14 16       25 27 29 31    37 39 41    47
+        // Slice 12 note: out-of-block ":z" doesn't lexically resolve; "z" is bound in
+        // the block, so the dynamic-scoping fallback silences the warning.
         val result = analyse("to f repeat 3 [ localmake \"z 5 print :z ] print :z end")
         val refs = result.symbolTable.varReferences
         assertEquals(1, refs.size)
@@ -356,24 +357,111 @@ class SymbolTableTest {
         assertEquals(37, ref.char) // in-block ":z"
         assertEquals(TokenType.QUOTED_WORD, decl.type)
         assertEquals(26, decl.char) // "z
-
-        val d = result.diagnostics.single()
-        assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertEquals(48, d.char) // out-of-block ":z"
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
     fun `variadic local inside a block binds every name and does not leak`() {
         // to f repeat 3 [ (local "a "b) print :a print :b ] print :a end
+        // Slice 12 note: out-of-block ":a" doesn't lexically resolve; "a" is bound in
+        // the block, so the dynamic-scoping fallback silences the warning.
         val result = analyse("to f repeat 3 [ (local \"a \"b) print :a print :b ] print :a end")
         val refs = result.symbolTable.varReferences
         // In-block :a and :b both resolve; out-of-block :a is unbound (not in refs).
         assertEquals(2, refs.size)
         assertTrue(refs.values.all { it.type == TokenType.QUOTED_WORD })
+        assertTrue(result.diagnostics.isEmpty())
+    }
 
+    // ---- slice 12: dynamic-scoping fallback + `for` counter binding ----
+
+    @Test
+    fun `unbound ref silenced when name is bound in another procedure (dynamic scoping)`() {
+        // to a make "shared 1 end to b print :shared end
+        // ":shared" in b is lexically unbound, but "shared" is bound in a, so the
+        // dynamic-scoping fallback silences the warning. No jump target either.
+        val result = analyse("to a make \"shared 1 end to b print :shared end")
+        assertTrue(result.diagnostics.isEmpty())
+        assertTrue(result.symbolTable.varReferences.isEmpty())
+    }
+
+    @Test
+    fun `unbound ref still warns when name appears nowhere in the file`() {
+        // to a print :nowhere end
+        //  0  3 5     11      19
+        // "nowhere" is never bound anywhere, so the warning fires as before.
+        val result = analyse("to a print :nowhere end")
         val d = result.diagnostics.single()
         assertEquals(DiagnosticSeverity.WARNING, d.severity)
-        assertTrue("a" in d.message) // the trailing out-of-block :a
+        assertEquals(11, d.char)
+        assertEquals(8, d.length) // ":nowhere"
+        assertTrue("nowhere" in d.message)
+    }
+
+    @Test
+    fun `for loop counter resolves inside body`() {
+        // to f for [i 1 10] [print :i] end
+        //  0  3 5    10    16 18    25 27
+        val result = analyse("to f for [i 1 10] [print :i] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals(25, ref.char) // :i ref (colon position)
+        assertEquals(TokenType.IDENTIFIER, decl.type) // counter is an IDENTIFIER token
+        assertEquals(10, decl.char) // 'i' in the template
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `for loop counter does not leak after the body`() {
+        // to f for [i 1 10] [print :i] print :i end
+        //  0  3 5    10    16 18    25 27   34
+        // First :i (in body) resolves to counter; second :i (after body) does not
+        // resolve lexically — but is silenced by the dynamic-scoping fallback since
+        // "i" is bound somewhere in the file (as the counter).
+        val result = analyse("to f for [i 1 10] [print :i] print :i end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, _) = refs.entries.single()
+        assertEquals(25, ref.char) // in-body :i
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `nested for - inner counter shadows outer of same name`() {
+        // to f for [i 1 10] [for [i 1 5] [print :i]] end
+        //  0  3 5    10    16  19   24  29  31    38 40 41
+        val result = analyse("to f for [i 1 10] [for [i 1 5] [print :i]] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        val (ref, decl) = refs.entries.single()
+        assertEquals(38, ref.char) // :i ref in inner body
+        // Resolves to inner counter at char 24, not outer at char 10
+        assertEquals(24, decl.char)
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `for body sees both counter and in-body make binding`() {
+        // to f for [i 1 10] [make "j :i print :j] end
+        //  0  3 5    10    18 19   24 27 30    36 38
+        val result = analyse("to f for [i 1 10] [make \"j :i print :j] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(2, refs.size)
+
+        // :i (in make's value) resolves to the counter at char 10
+        val iRef = refs.entries.single { it.key.text == "i" }
+        assertEquals(27, iRef.key.char)
+        assertEquals(TokenType.IDENTIFIER, iRef.value.type)
+        assertEquals(10, iRef.value.char)
+
+        // :j (in the print) resolves to the in-body make's "j at char 24
+        val jRef = refs.entries.single { it.key.text == "j" }
+        assertEquals(36, jRef.key.char)
+        assertEquals(TokenType.QUOTED_WORD, jRef.value.type)
+        assertEquals(24, jRef.value.char)
+
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test

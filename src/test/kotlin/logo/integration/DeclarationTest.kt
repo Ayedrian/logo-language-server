@@ -224,4 +224,22 @@ class DeclarationTest {
         assertEquals(21, target.range.startChar)
         assertEquals(23, target.range.endChar)
     }
+
+    // ---- slice 12: `for` counter binding ----
+
+    @Test
+    fun `go-to-declaration on for loop counter ref jumps to template counter`() {
+        // line 0: to f for [i 1 10] [print :i] end
+        //          0  3 5    10    16 18    25 27
+        val source = "to f for [i 1 10] [print :i] end"
+        val result = analyse(source)
+        // Cursor on the ':' of ':i' at char 25
+        val target = findDeclaration(result.ast, result.symbolTable, line = 0, char = 25)
+        assertNotNull(target)
+        // Counter 'i' at char 10 — IDENTIFIER token (no leading colon/quote), so
+        // range is [10, 11) — just the one character.
+        assertEquals(0, target.range.line)
+        assertEquals(10, target.range.startChar)
+        assertEquals(11, target.range.endChar)
+    }
 }
