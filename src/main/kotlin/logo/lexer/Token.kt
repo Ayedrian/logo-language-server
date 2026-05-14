@@ -14,6 +14,13 @@ enum class TokenType {
     IDENTIFIER,
 
     NUMBER,
+
+    /**
+     * a variable reference or parameter declaration, written as ":name" in LOGO
+     * the token's text holds the name without the leading colon
+     */
+    VARIABLE,
+
     EOF, // useful (parser doesn't need bounds check and can just keep consuming tokens until it discovers an EOF token)
     UNKNOWN, // unrecognised characters, we keep these for error recovery instead of ignoring them
 }

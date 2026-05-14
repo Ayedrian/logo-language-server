@@ -31,11 +31,9 @@ class FirstPassScanner(private val tokens: List<Token>) {
         position++ // consume procedure name
 
         var arity = 0
-        // count ':param' tokens until we hit something that isn't one
-        // TODO: fix using the UNKNOWN token type as a workaround
-        while (position < tokens.size && current().type == TokenType.UNKNOWN && current().text == ":") {
-            position++ // ':'
-            if (position < tokens.size && current().type == TokenType.IDENTIFIER) position++ // parameter name
+        // count number of VARIABLE (":param") tokens until we encounter something that isn't a variable
+        while (position < tokens.size && current().type == TokenType.VARIABLE) {
+            position++
             arity++
         }
         procedures[name] = arity

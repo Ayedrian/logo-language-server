@@ -43,6 +43,7 @@ class Lexer(private val sourceCode: String) {
             char.isDigit() -> readNumber(startLine, startColumn)
             // handle negative numbers that start with a -
             char == '-' && position + 1 < sourceCode.length && sourceCode[position + 1].isDigit() -> readNumber(startLine, startColumn)
+            char == ':' && position + 1 < sourceCode.length && sourceCode[position + 1].isLetter() -> readVariable(startLine, startColumn)
             else -> { advance(); Token(TokenType.UNKNOWN, char.toString(), startLine, startColumn) }
         }
     }
@@ -60,6 +61,17 @@ class Lexer(private val sourceCode: String) {
         // if a name is not a recognized keyword, it has to be an identifier
         val type = if (text in KEYWORDS) TokenType.KEYWORD else TokenType.IDENTIFIER
         return Token(type, text, startLine, startColumn)
+    }
+
+    /**
+     * Reads a ":name" variable reference, the leading ':' is consumed but not included in the token text
+     */
+    private fun readVariable(startLine: Int, startColumn: Int): Token {
+        advance() // consume ':'
+        val start = position
+        while (position < sourceCode.length && (sourceCode[position].isLetterOrDigit() || sourceCode[position] == '_')) advance()
+        val name = sourceCode.substring(start, position).lowercase()
+        return Token(TokenType.VARIABLE, name, startLine, startColumn)
     }
 
     /**

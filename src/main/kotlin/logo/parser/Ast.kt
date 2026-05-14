@@ -16,6 +16,15 @@ data class CommandNode(
     val args: List<ExpressionNode>,
 ) : StatementNode()
 
+// a user-defined procedure: "to <name> :p1 :p2 ... <body> end"
+// nameToken is the procedure name (for go-to-declaration), parameters are VARIABLE tokens,
+// body is the list of statements between the parameter list and "end" keyword
+data class ProcedureDefNode(
+    val nameToken: Token, // will be used for go-to-declaration
+    val params: List<Token>, // will be used for semantic-token highlighting
+    val body: List<StatementNode>,
+) : StatementNode()
+
 // expression node (arguments to commands), in the future will be things such as variable references, arithmetic, list literals etc.
 sealed class ExpressionNode : AstNode()
 
