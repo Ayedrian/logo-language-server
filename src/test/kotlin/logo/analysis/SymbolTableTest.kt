@@ -33,9 +33,11 @@ class SymbolTableTest {
 
     @Test
     fun `unbound variable in body emits warning diagnostic`() {
-        // line 0: to square :size fd :foo end
-        //          0  3      10    16 19    25
-        val result = analyse("to square :size fd :foo end")
+        // line 0: to square :size fd :foo print :size end
+        //          0  3      10    16 19    24    30    36
+        // Param is referenced (print :size) so the slice-13 unused-variable pass doesn't
+        // emit a second warning; we test the unbound diagnostic in isolation.
+        val result = analyse("to square :size fd :foo print :size end")
         val d = result.diagnostics.single()
         assertEquals(DiagnosticSeverity.WARNING, d.severity)
         assertEquals(0, d.line)
@@ -62,7 +64,9 @@ class SymbolTableTest {
 
     @Test
     fun `unbound variable inside a block is flagged`() {
-        val result = analyse("to f :x repeat 4 [ fd :y ] end")
+        // :x is used (repeat :x [...]) so the slice-13 unused pass doesn't fire on it;
+        // we isolate the unbound :y warning.
+        val result = analyse("to f :x repeat :x [ fd :y ] end")
         val d = result.diagnostics.single()
         assertEquals(DiagnosticSeverity.WARNING, d.severity)
         assertTrue("y" in d.message)
@@ -94,7 +98,9 @@ class SymbolTableTest {
 
     @Test
     fun `unbound variable inside arithmetic is flagged`() {
-        val result = analyse("to f :x fd :y + 1 end")
+        // :x is used (in the + expression) so the slice-13 unused pass doesn't fire on it;
+        // we isolate the unbound :y warning.
+        val result = analyse("to f :x fd :y + :x end")
         val d = result.diagnostics.single()
         assertEquals(DiagnosticSeverity.WARNING, d.severity)
         assertTrue("y" in d.message)
@@ -438,7 +444,13 @@ class SymbolTableTest {
         assertEquals(38, ref.char) // :i ref in inner body
         // Resolves to inner counter at char 24, not outer at char 10
         assertEquals(24, decl.char)
-        assertTrue(result.diagnostics.isEmpty())
+        // The outer counter at char 10 has no use (the only :i resolves to inner). Under
+        // slice 13's unused pass it surfaces as a single Unused-variable warning at char 10.
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(10, d.char)
+        assertTrue("Unused" in d.message)
+        assertTrue("i" in d.message)
     }
 
     @Test
@@ -488,5 +500,143 @@ class SymbolTableTest {
         assertEquals(5, third.value.char)
 
         assertTrue(result.diagnostics.isEmpty())
+    }
+
+    // ---- slice 13: unused variable warnings ----
+
+    @Test
+    fun `unused parameter emits warning`() {
+        // to f :x end
+        //  0  3 5    8
+        val result = analyse("to f :x end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(0, d.line)
+        assertEquals(5, d.char)
+        assertEquals(2, d.length) // ":x"
+        assertTrue("Unused" in d.message)
+        assertTrue("x" in d.message)
+    }
+
+    @Test
+    fun `unused make-binding emits warning`() {
+        // to f make "y 1 end
+        //  0  3 5    10 13   16
+        val result = analyse("to f make \"y 1 end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(10, d.char)
+        assertEquals(2, d.length) // "\"y"
+        assertTrue("Unused" in d.message)
+        assertTrue("y" in d.message)
+    }
+
+    @Test
+    fun `unused localmake-binding emits warning`() {
+        // to f localmake "z 5 end
+        //  0  3 5         15 18    21
+        val result = analyse("to f localmake \"z 5 end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(15, d.char)
+        assertEquals(2, d.length) // "\"z"
+        assertTrue("z" in d.message)
+    }
+
+    @Test
+    fun `unused for counter emits warning at the IDENTIFIER token (no leading sigil)`() {
+        // to f for [i 1 10] [print 1] end
+        //  0  3 5    10           26    32
+        val result = analyse("to f for [i 1 10] [print 1] end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(10, d.char)
+        assertEquals(1, d.length) // just "i", no leading colon — IDENTIFIER token
+        assertTrue("i" in d.message)
+    }
+
+    @Test
+    fun `top-level unused make emits warning`() {
+        // make "g 1
+        //  0    5 8
+        val result = analyse("make \"g 1")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(5, d.char)
+        assertEquals(2, d.length) // "\"g"
+        assertTrue("g" in d.message)
+    }
+
+    @Test
+    fun `variadic local — only the unused arg warns`() {
+        // to f (local "a "b) print :a end
+        //  0  3 5      12 15      25     30
+        // "a is used by :a at char 25; "b has no ref. Exactly one warning, at "b.
+        val result = analyse("to f (local \"a \"b) print :a end")
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(15, d.char) // "\"b"
+        assertEquals(2, d.length)
+        assertTrue("b" in d.message)
+    }
+
+    @Test
+    fun `dynamic-scoping fallback silences unused warning on the binding`() {
+        // to a make "shared 1 end to b print :shared end
+        // "shared in a has no lexical ref; :shared in b is silenced by the fallback
+        // (name in globallyBound). The fallback records the name in unresolvedRefNames,
+        // which makes the unused pass skip the matching decl. → No diagnostics at all.
+        val result = analyse("to a make \"shared 1 end to b print :shared end")
+        assertTrue(result.diagnostics.isEmpty())
+        // varReferences also empty (the dynamic-scoping ref has no jump target)
+        assertTrue(result.symbolTable.varReferences.isEmpty())
+    }
+
+    @Test
+    fun `param shadowed by same-name make — param warned, make is used by ref`() {
+        // to f :x make "x 5 print :x end
+        //  0  3 5    8    13  18    24  27
+        // :x param is shadowed before the only ref → unused. "x is the actual binding for
+        // the ref at char 24. Exactly one Unused warning, at the param :x.
+        val result = analyse("to f :x make \"x 5 print :x end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        // :x ref at char 24 resolves to "x at char 13
+        assertEquals(13, refs.values.single().char)
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(5, d.char) // param :x position
+        assertEquals(2, d.length)
+        assertTrue("Unused" in d.message)
+    }
+
+    @Test
+    fun `multiple unused params each produce their own warning`() {
+        // to f :a :b :c end
+        //  0  3 5  8  11   14
+        val result = analyse("to f :a :b :c end")
+        assertEquals(3, result.diagnostics.size)
+        val chars = result.diagnostics.map { it.char }.toSet()
+        assertEquals(setOf(5, 8, 11), chars)
+        assertTrue(result.diagnostics.all { it.severity == DiagnosticSeverity.WARNING })
+        assertTrue(result.diagnostics.all { "Unused" in it.message })
+    }
+
+    @Test
+    fun `nested for — outer counter used, inner counter unused`() {
+        // to f for [i 1 10] [for [j 1 5] [print :i]] end
+        //  0  3 5    10          24           38
+        // :i resolves to outer counter; inner counter j has no use → one Unused warning at j.
+        val result = analyse("to f for [i 1 10] [for [j 1 5] [print :i]] end")
+        val refs = result.symbolTable.varReferences
+        assertEquals(1, refs.size)
+        assertEquals(10, refs.values.single().char) // :i → outer counter
+
+        val d = result.diagnostics.single()
+        assertEquals(DiagnosticSeverity.WARNING, d.severity)
+        assertEquals(24, d.char) // inner counter j
+        assertEquals(1, d.length) // IDENTIFIER token, no sigil
+        assertTrue("j" in d.message)
     }
 }

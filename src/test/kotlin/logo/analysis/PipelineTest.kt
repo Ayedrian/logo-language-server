@@ -8,11 +8,13 @@ class PipelineTest {
 
     @Test
     fun `parser and symbol-table diagnostics both surface`() {
-        // Missing 'end' (parser ERROR) plus unbound :y (symbol-table WARNING)
+        // Missing 'end' (parser ERROR) + unbound :y (symbol-table WARNING) +
+        // unused :x (symbol-table WARNING, added in slice 13). The point of the test is that
+        // both severities reach the pipeline output; the exact warning count is incidental.
         val result = analyse("to f :x fd :y")
         val severities = result.diagnostics.map { it.severity }.toSet()
-        assertEquals(2, result.diagnostics.size)
         assertEquals(setOf(DiagnosticSeverity.ERROR, DiagnosticSeverity.WARNING), severities)
+        assertEquals(1, result.diagnostics.count { it.severity == DiagnosticSeverity.ERROR })
     }
 
     // ---- slice 12: BUILTIN_ARITIES expansion ----

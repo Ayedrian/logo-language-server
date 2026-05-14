@@ -31,7 +31,7 @@ class SymbolTable {
 
 /**
  * Result of walking the AST, contains both the populated table and any semantic diagnostics
- * (currently only "unbound variable") encountered during the walk
+ * (unbound variable warnings + unused variable warnings) encountered during the walk
  */
 data class SymbolTableResult(val table: SymbolTable, val diagnostics: List<Diagnostic>)
 
@@ -51,11 +51,24 @@ data class SymbolTableResult(val table: SymbolTable, val diagnostics: List<Diagn
  * scoping at runtime, so a ref may legitimately bind to a `local "x` in a caller we can't see
  * statically. These refs still get no jump target. Only names that don't appear in any binding
  * anywhere in the file warn.
+ *
+ * Unused-variable diagnostics fire when a declaration has no lexical ref AND its name does not
+ * appear in any silenced (dynamic-scoping) ref — the two criteria together avoid both false
+ * positives on dynamically-scoped uses and false negatives on shadowed-then-unused params.
  */
 class SymbolTableBuilder(private val ast: ProgramNode) {
     private val table = SymbolTable()
     private val diagnostics = mutableListOf<Diagnostic>()
-    private val globallyBound: Set<String> = collectGloballyBound(ast)
+
+    // Every binding site in the file (params, make/local/localmake decls, for counters).
+    // Single source of truth: globallyBound is just the names projected out.
+    private val allDecls: List<Token> = collectAllDecls(ast)
+    private val globallyBound: Set<String> = allDecls.map { it.text }.toSet()
+
+    // Names of refs that failed lexical resolution AND were silenced by the dynamic-scoping
+    // fallback (i.e. their name appears somewhere in globallyBound). Used to suppress unused
+    // warnings: a decl whose name shows up in a plausibly-dynamic ref is not considered unused.
+    private val unresolvedRefNames = mutableSetOf<String>()
 
     fun build(): SymbolTableResult {
         val topLevelScope = mutableMapOf<String, Token>()
@@ -70,6 +83,7 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
                 is CommandNode -> walkStatement(stmt, topLevelScope)
             }
         }
+        emitUnusedDiagnostics()
         return SymbolTableResult(table, diagnostics)
     }
 
@@ -147,7 +161,8 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
                     // Dynamic-scoping fallback: if the name is bound somewhere in the file,
                     // suppress the warning — at runtime the ref may bind dynamically to that
                     // binding. We still record no jump target; go-to-declaration returns null.
-                    expr.token.text in globallyBound -> Unit
+                    // The name is recorded so the unused-decl post-pass can spare matching decls.
+                    expr.token.text in globallyBound -> unresolvedRefNames += expr.token.text
                     else -> diagnostics += Diagnostic(
                         message = "Unbound variable ':${expr.token.text}'",
                         line = expr.token.line,
@@ -174,38 +189,68 @@ class SymbolTableBuilder(private val ast: ProgramNode) {
             else -> Unit
         }
     }
+
+    /**
+     * Two-criterion unused check: a declaration is unused iff (1) no lexical ref resolves to it
+     * AND (2) its name does not appear in any silenced (dynamic-scoping) ref. (1) alone
+     * over-warns when the only use is via dynamic scoping; (2) alone under-warns when a
+     * same-name make shadows an unused param. Both together is precise.
+     */
+    private fun emitUnusedDiagnostics() {
+        val usedDecls: Set<Token> = table.varReferences.values.toSet()
+        for (decl in allDecls) {
+            if (decl in usedDecls) continue
+            if (decl.text in unresolvedRefNames) continue
+            diagnostics += Diagnostic(
+                message = "Unused variable '${decl.text}'",
+                line = decl.line,
+                char = decl.char,
+                length = rangeLength(decl),
+                severity = DiagnosticSeverity.WARNING,
+            )
+        }
+    }
 }
 
 /**
- * Pre-pass that collects every name bound *anywhere* in the file: procedure params, make /
- * localmake / local first args, and `for` counters — at any nesting depth. Used as the
- * dynamic-scoping fallback: an unbound :x lexical ref is silenced (no warning) iff its name
- * appears in this set, since LOGO's dynamic scoping may bind it at runtime.
+ * On-screen span of a declaration token. VARIABLE (`:x`) and QUOTED_WORD (`"x`) keep the
+ * leading sigil in the rendered range even though the token text excludes it; IDENTIFIER
+ * (`for` counter) is just the bare name.
  */
-private fun collectGloballyBound(ast: ProgramNode): Set<String> {
-    val names = mutableSetOf<String>()
-    for (stmt in ast.statements) collectBindings(stmt, names)
-    return names
+private fun rangeLength(t: Token): Int = when (t.type) {
+    TokenType.VARIABLE, TokenType.QUOTED_WORD -> t.text.length + 1
+    else -> t.text.length
 }
 
-private fun collectBindings(stmt: StatementNode, names: MutableSet<String>) {
+/**
+ * Pre-pass that collects every declaration token in the file: procedure params, make /
+ * localmake / local first args, and `for` counters — at any nesting depth. Used both as the
+ * dynamic-scoping fallback set (names projected out) and as the input to the unused-decl pass.
+ */
+private fun collectAllDecls(ast: ProgramNode): List<Token> {
+    val decls = mutableListOf<Token>()
+    for (stmt in ast.statements) collectBindings(stmt, decls)
+    return decls
+}
+
+private fun collectBindings(stmt: StatementNode, decls: MutableList<Token>) {
     when (stmt) {
         is ProcedureDefNode -> {
-            for (param in stmt.params) names += param.text
-            for (s in stmt.body) collectBindings(s, names)
+            for (param in stmt.params) decls += param
+            for (s in stmt.body) collectBindings(s, decls)
         }
         is CommandNode -> {
             when (stmt.nameToken.text) {
                 "make", "localmake" -> {
                     val first = stmt.args.firstOrNull()
                     if (first is WordLiteralNode && first.token.type == TokenType.QUOTED_WORD) {
-                        names += first.token.text
+                        decls += first.token
                     }
                 }
                 "local" -> {
                     for (arg in stmt.args) {
                         if (arg is WordLiteralNode && arg.token.type == TokenType.QUOTED_WORD) {
-                            names += arg.token.text
+                            decls += arg.token
                         }
                     }
                 }
@@ -215,24 +260,24 @@ private fun collectBindings(stmt: StatementNode, names: MutableSet<String>) {
                         ?.statements?.firstOrNull()
                         ?.let { it as? CommandNode }
                         ?.nameToken
-                    if (counter != null) names += counter.text
+                    if (counter != null) decls += counter
                 }
             }
             // Recurse into expression args to find bindings nested inside blocks
-            for (arg in stmt.args) collectBindingsInExpression(arg, names)
+            for (arg in stmt.args) collectBindingsInExpression(arg, decls)
         }
     }
 }
 
-private fun collectBindingsInExpression(expr: ExpressionNode, names: MutableSet<String>) {
+private fun collectBindingsInExpression(expr: ExpressionNode, decls: MutableList<Token>) {
     when (expr) {
-        is BlockExpressionNode -> for (s in expr.statements) collectBindings(s, names)
+        is BlockExpressionNode -> for (s in expr.statements) collectBindings(s, decls)
         is BinaryOpNode -> {
-            collectBindingsInExpression(expr.left, names)
-            collectBindingsInExpression(expr.right, names)
+            collectBindingsInExpression(expr.left, decls)
+            collectBindingsInExpression(expr.right, decls)
         }
-        is UnaryOpNode -> collectBindingsInExpression(expr.operand, names)
-        is CallExpressionNode -> for (arg in expr.args) collectBindingsInExpression(arg, names)
+        is UnaryOpNode -> collectBindingsInExpression(expr.operand, decls)
+        is CallExpressionNode -> for (arg in expr.args) collectBindingsInExpression(arg, decls)
         else -> Unit // leaves: NumberNode, VariableRefNode, WordLiteralNode, ArrayLiteralNode
     }
 }

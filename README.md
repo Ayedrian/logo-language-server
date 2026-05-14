@@ -5,6 +5,7 @@ An LSP (Language Server Protocol) server for the LOGO programming language, writ
 Supports:
 - Syntax highlighting via semantic tokens
 - Go-to-declaration for procedures and variable references
+- Unused variable warnings
 
 ## Requirements
 
