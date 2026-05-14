@@ -1,0 +1,17 @@
+{
+  "name": "logo",
+  "displayName": "Logo",
+  "version": "0.0.1",
+  "engines": { "vscode": "*" },
+  "contributes": {
+    "languages": [{
+      "id": "logo",
+      "extensions": [".logo"]
+    }],
+    "grammars": [{
+      "language": "logo",
+      "scopeName": "source.logo",
+      "path": "./logo.tmLanguage.json"
+    }]
+  }
+}

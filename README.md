@@ -36,12 +36,12 @@ The script lands at `build/install/logo-language-server/bin/logo-language-server
 ## Trying it in IntelliJ (via LSP4IJ)
 
 1. Install the **LSP4IJ** plugin from the Marketplace and restart the IDE.
-2. Open the **Language Servers** tool window (View → Tool Windows → Language Servers).
-3. Click `+` → **New Language Server** and fill in:
+2. Open **Settings → Languages & Frameworks → Language Servers**.
+3. Click `+` at the top of the list → **New Language Server** and fill in:
    - **Name**: `LOGO`
    - **Command**: absolute path to `build/install/logo-language-server/bin/logo-language-server`
    - **Mappings** tab: add a row with file name pattern `*.logo` and language id `logo`
-4. Open any `.logo` file. The server boots on first open.
+4. Apply. Open any `.logo` file, the server boots on first open.
 
 ### TextMate grammar
 
@@ -50,6 +50,8 @@ provides regex-based coloring (comments, numbers, `:variables`, operators,
 and the ~300 UCBLogo built-in primitives). This is the base layer the
 LSP's semantic tokens build on top of, without it opening a `.logo` file
 before the server boots shows plain text.
+
+The `grammars/` directory ships with a tiny `package.json` so that IntelliJ's TextMate Bundles loader accepts it.
 
 To install in IntelliJ:
 1. Go to **Settings → Editor → TextMate Bundles**.
