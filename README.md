@@ -86,6 +86,22 @@ The list below documents what the server intentionally does NOT analyze.
 Most of these are deliberate trade-offs that keep the static analysis honest
 about what dynamic scoping and first-class instruction lists make difficult to handle.
 
+### LSP protocol scope
+
+A handful of LSP protocol features were deliberately placed out of scope:
+
+- **Single-file analysis** — no multi-file LOGO workspace; each file is
+  analyzed in isolation.
+- **No incremental parsing** — every `textDocument/didChange` re-runs the
+  full pipeline (also mentioned in the architecture section)
+- **Semantic tokens: `full` only** — the `full/delta` and `range` variants
+  are not advertised or implemented
+- **No workspace configuration** — `workspace/configuration` and
+  `workspace/didChangeConfiguration` are ignored
+- **No references / usages** — `textDocument/references` is not implemented;
+  only `textDocument/declaration` is supported on the go-to side (which in
+  LOGO semantically covers both declaration and definition)
+
 ### Lexer
 
 - **`:quoted.varname`** — UCBLogo's special pseudo-procedure (returns a
